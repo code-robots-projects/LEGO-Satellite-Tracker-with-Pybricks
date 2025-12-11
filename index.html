@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LEGO Satellite Playlist Commander</title>
+    <title>LEGO Playlist Commander (Robust)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/4.1.3/satellite.min.js"></script>
     <style>
-        :root { --bg: #0f172a; --panel: #1e293b; --text: #e2e8f0; --blue: #3b82f6; --green: #22c55e; --orange: #f59e0b; }
+        :root { --bg: #0f172a; --panel: #1e293b; --text: #e2e8f0; --blue: #3b82f6; --green: #22c55e; --orange: #f59e0b; --red: #ef4444; }
         body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
         .container { max-width: 1200px; margin: 0 auto; }
         
@@ -17,21 +17,24 @@
         /* Card Styles */
         .card { background: var(--panel); border-radius: 12px; padding: 20px; border: 1px solid #334155; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         h1 { color: #60a5fa; text-align: center; margin-top: 0; text-transform: uppercase; letter-spacing: 2px; }
-        h2, h3 { color: #94a3b8; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-top: 0; }
+        h3 { color: #94a3b8; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-top: 0; }
 
         /* Inputs & Buttons */
-        .control-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; }
-        input { background: #0f172a; border: 1px solid #475569; color: white; padding: 10px; border-radius: 6px; flex: 1; text-align: center; }
+        .control-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; align-items: flex-end; }
+        .input-group { flex: 1; min-width: 100px; }
+        label { font-size: 0.8em; color: #94a3b8; display: block; margin-bottom: 4px; }
+        input { background: #0f172a; border: 1px solid #475569; color: white; padding: 10px; border-radius: 6px; width: 100%; box-sizing: border-box; text-align: center; }
         
-        button { padding: 12px; border: none; cursor: pointer; border-radius: 6px; font-weight: bold; color: white; transition: 0.2s; }
-        .btn-blue { background: var(--blue); width: 100%; } .btn-blue:hover { background: #2563eb; }
+        button { padding: 12px; border: none; cursor: pointer; border-radius: 6px; font-weight: bold; color: white; transition: 0.2s; width: 100%; }
+        .btn-blue { background: var(--blue); } .btn-blue:hover { background: #2563eb; }
         .btn-green { background: var(--green); } .btn-green:hover { background: #16a34a; }
-        .btn-copy { background: #475569; width: 100%; margin-top: 10px; }
+        .btn-orange { background: var(--orange); color: #000; } .btn-orange:hover { background: #d97706; }
+        .btn-copy { background: #475569; margin-top: 10px; }
 
         /* Playlist Styling */
         .playlist { max-height: 500px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
         .playlist-item { background: #0f172a; padding: 15px; border-radius: 8px; border: 1px solid #334155; display: grid; grid-template-columns: 40px 1fr auto; align-items: center; }
-        .playlist-item.iss { border-color: var(--orange); background: #3d2203; } /* Highlight ISS */
+        .playlist-item.iss { border-color: var(--orange); background: #3d2203; } 
         
         .slot-badge { background: #475569; color: white; border-radius: 50%; width: 25px; height: 25px; display: flex; align-items: center; justify-content: center; font-size: 0.8em; font-weight: bold; }
         .sat-info div:first-child { font-weight: bold; font-size: 1.1em; }
@@ -46,10 +49,8 @@
         #timerBox { text-align: center; background: #000; padding: 15px; border-radius: 8px; margin-top: 20px; border: 1px solid #333; }
         #mainTimer { font-family: monospace; font-size: 2.5em; color: var(--green); display: block; }
         #subTimer { font-family: monospace; font-size: 1.2em; color: var(--orange); display: block; margin-top: 5px; }
-        #launchMsg { color: #94a3b8; font-size: 0.9em; }
 
         textarea { width: 100%; height: 150px; background: #0f172a; color: #a5f3fc; font-family: monospace; padding: 10px; border-radius: 8px; border: 1px solid #334155; margin-top: 10px; resize: vertical; }
-        
         .hidden { display: none; }
     </style>
 </head>
@@ -60,11 +61,26 @@
 
     <div class="card">
         <div class="control-row">
-            <input type="number" id="lat" placeholder="Latitude" step="0.0001">
-            <input type="number" id="lon" placeholder="Longitude" step="0.0001">
-            <button class="btn-green" style="flex:0 0 100px" onclick="detectLoc()">📍 Detect</button>
-            <input type="time" id="startTime">
-            <button class="btn-blue" style="flex:2" onclick="generatePlaylist()">🚀 Build Playlist (Next 1h + ISS)</button>
+            <div class="input-group">
+                <label>LATITUDE</label>
+                <input type="number" id="lat" placeholder="0.00" step="0.0001">
+            </div>
+            <div class="input-group">
+                <label>LONGITUDE</label>
+                <input type="number" id="lon" placeholder="0.00" step="0.0001">
+            </div>
+            <div class="input-group" style="flex: 0 0 120px;">
+                <label>&nbsp;</label>
+                <button class="btn-orange" id="btnLoc" onclick="detectLoc()">📍 Detect</button>
+            </div>
+            <div class="input-group">
+                <label>START TIME</label>
+                <input type="time" id="startTime">
+            </div>
+            <div class="input-group" style="flex: 2;">
+                <label>&nbsp;</label>
+                <button class="btn-blue" onclick="generatePlaylist()">🚀 Build Playlist (Next 1h)</button>
+            </div>
         </div>
         <div id="status" style="text-align: center; color: var(--orange); font-weight: bold; height: 20px;"></div>
     </div>
@@ -73,7 +89,6 @@
         
         <div class="card">
             <h3>Mission Playlist</h3>
-            <p style="font-size:0.85em; color:#94a3b8;">The robot will execute these automatically in sequence.</p>
             <div id="playlist" class="playlist"></div>
         </div>
 
@@ -89,16 +104,16 @@
             </div>
 
             <div id="timerBox">
-                <div id="launchMsg">WAITING TO START</div>
+                <div id="launchMsg" style="color: #94a3b8; font-size: 0.9em;">WAITING TO START</div>
                 <div id="mainTimer">--:--:--</div>
                 <div id="subTimer">Next: [Loading...]</div>
             </div>
 
             <div style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #334155;">
                 <h3>Robot Python Code</h3>
-                <p style="font-size:0.85em; color:#94a3b8;">Upload once. Press Center Button at the Start Time of Mission #1.</p>
+                <p style="font-size:0.85em; color:#94a3b8;">1. Upload Code. 2. Press Robot Center Button at EXACT Start Time of Mission #1.</p>
                 <textarea id="codeBox" readonly></textarea>
-                <button class="btn-copy" onclick="copyCode()">📋 Copy Code to Clipboard</button>
+                <button class="btn-copy" onclick="copyCode()">📋 Copy Code</button>
             </div>
         </div>
     </div>
@@ -106,344 +121,8 @@
 
 <script>
     const now = new Date();
-    document.getElementById('startTime').value = now.toTimeString().substring(0,5);
-    const canvas = document.getElementById('radar');
-    const ctx = canvas.getContext('2d');
-    canvas.width = 300; canvas.height = 300;
-    
-    let playlist = [];
-    let timerInterval = null;
+    document.getElementById('startTime
 
-    // --- 1. LOCATION ---
-    function detectLoc() {
-        if(!navigator.geolocation) return alert("Browser needs permission.");
-        navigator.geolocation.getCurrentPosition(p => {
-            document.getElementById('lat').value = p.coords.latitude.toFixed(4);
-            document.getElementById('lon').value = p.coords.longitude.toFixed(4);
-        });
-    }
-
-    // --- 2. GENERATE PLAYLIST ---
-    async function generatePlaylist() {
-        const lat = parseFloat(document.getElementById('lat').value);
-        const lon = parseFloat(document.getElementById('lon').value);
-        if(isNaN(lat)) return alert("Set Location First.");
-
-        const status = document.getElementById('status');
-        status.innerText = "Downloading Orbit Data...";
-
-        try {
-            // Get TLEs
-            const res = await fetch('https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=tle');
-            const txt = await res.text();
-            const lines = txt.split('\n');
-            const sats = [];
-            let issSat = null;
-
-            for(let i=0; i<lines.length; i+=3) {
-                if(lines[i+1]?.startsWith('1')) {
-                    const name = lines[i].trim();
-                    const s = { name: name, rec: satellite.twoline2satrec(lines[i+1], lines[i+2]) };
-                    sats.push(s);
-                    if(name.includes("ZARYA") || name.includes("ISS")) issSat = s;
-                }
-            }
-
-            status.innerText = "Scanning Next 60 Minutes...";
-            
-            // Search Parameters
-            const timeParts = document.getElementById('startTime').value.split(':');
-            const startSearch = new Date();
-            startSearch.setHours(timeParts[0], timeParts[1], 0, 0);
-            
-            const obs = { latitude: satellite.degreesToRadians(lat), longitude: satellite.degreesToRadians(lon), height: 0.03 };
-            const found = [];
-
-            // 1. Scan General (Next 60 mins)
-            for(let s of sats) {
-                let p = findNextPass(s, startSearch, 60, obs);
-                if(p && p.maxEl > 15) found.push(p);
-            }
-
-            // 2. Scan ISS Specifically (Look ahead 3 hours to ensure we catch it)
-            if(issSat) {
-                let issPass = findNextPass(issSat, startSearch, 180, obs); // 3 hour scan for ISS
-                if(issPass && issPass.maxEl > 10) {
-                    // Check if ISS is already in the list
-                    const exists = found.find(f => f.name === issPass.name && Math.abs(f.start - issPass.start) < 60000);
-                    if(!exists) {
-                        issPass.isPriority = true;
-                        found.push(issPass); // Force add ISS
-                    } else {
-                        exists.isPriority = true; // Mark existing as priority
-                    }
-                }
-            }
-
-            // 3. Sort & Filter
-            // Sort by Max Elevation first to find brightness
-            found.sort((a,b) => b.maxEl - a.maxEl);
-            
-            // Take Top 10 (Ensure ISS stays if it exists)
-            let finalSelection = found.slice(0, 10);
-            
-            // If ISS was bumped out, force it back in
-            const issInList = finalSelection.find(f => f.isPriority);
-            const issInData = found.find(f => f.isPriority);
-            if(issInData && !issInList) {
-                finalSelection.pop(); // Remove #10
-                finalSelection.push(issInData); // Add ISS
-            }
-
-            // Finally, RE-SORT BY TIME for the Playlist sequence
-            finalSelection.sort((a,b) => a.start - b.start);
-            playlist = finalSelection;
-
-            if(playlist.length === 0) { status.innerText = "No visible passes found."; return; }
-
-            // Calc Paths
-            status.innerText = "Generating Flight Plans...";
-            playlist.forEach(m => m.path = calcPath(m, obs));
-
-            // Render
-            status.innerText = "";
-            document.getElementById('mainUI').classList.remove('hidden');
-            renderPlaylist();
-            generateCode();
-            startMasterTimer();
-            // Draw all paths faintly
-            drawRadar(null); 
-
-        } catch(e) { status.innerText = "Error: " + e; console.error(e); }
-    }
-
-    function findNextPass(sat, startTime, durationMins, obs) {
-        let inPass=false, maxEl=0, startT=null;
-        for(let m=0; m<durationMins; m++) {
-            const t = new Date(startTime.getTime() + m*60000);
-            const gmst = satellite.gstime(t);
-            const pv = satellite.propagate(sat.rec, t);
-            if(!pv.position) continue;
-            
-            const look = satellite.ecfToLookAngles(obs, satellite.eciToEcf(pv.position, gmst));
-            const el = satellite.radiansToDegrees(look.elevation);
-
-            if(el > 10) {
-                if(!inPass) { inPass=true; startT=t; maxEl=0; }
-                if(el > maxEl) maxEl=el;
-            } else {
-                if(inPass) {
-                    return { name: sat.name, start: startT, maxEl: maxEl, rec: sat.rec };
-                }
-            }
-        }
-        return null;
-    }
-
-    function calcPath(m, obs) {
-        const path = [];
-        const startT = m.start.getTime();
-        // Reduced resolution: 1 point every 8 seconds to save RAM for the playlist
-        for(let s=0; s<900; s+=8) { 
-            const t = new Date(startT + s*1000);
-            const gmst = satellite.gstime(t);
-            const pv = satellite.propagate(m.rec, t);
-            if(!pv.position) continue;
-            
-            const look = satellite.ecfToLookAngles(obs, satellite.eciToEcf(pv.position, gmst));
-            const el = satellite.radiansToDegrees(look.elevation);
-            const az = satellite.radiansToDegrees(look.azimuth);
-            
-            if(el < 0) break;
-            path.push({ t:s, az:az, el:el });
-        }
-        return path;
-    }
-
-    // --- 3. UI ---
-    function renderPlaylist() {
-        const list = document.getElementById('playlist');
-        list.innerHTML = "";
-        playlist.forEach((m, i) => {
-            const el = document.createElement('div');
-            el.className = 'playlist-item' + (m.isPriority ? ' iss' : '');
-            el.innerHTML = `
-                <div class="slot-badge">${i+1}</div>
-                <div class="sat-info">
-                    <div>${m.name} ${m.isPriority ? '⭐' : ''}</div>
-                    <div>Launch: ${m.start.toLocaleTimeString()}</div>
-                </div>
-                <div class="sat-el">Max ${m.maxEl.toFixed(0)}°</div>
-            `;
-            list.appendChild(el);
-        });
-    }
-
-    function drawRadar(activePath) {
-        ctx.fillStyle = "#000"; ctx.fillRect(0,0,300,300);
-        const cx=150, cy=150, r=135;
-        
-        // Grid
-        ctx.strokeStyle = "#334155"; ctx.lineWidth=1;
-        [1, 0.66, 0.33].forEach(scale => {
-            ctx.beginPath(); ctx.arc(cx,cy,r*scale,0,Math.PI*2); ctx.stroke();
-        });
-        ctx.beginPath(); ctx.moveTo(cx,0); ctx.lineTo(cx,300); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(0,cy); ctx.lineTo(300,cy); ctx.stroke();
-
-        if(!playlist.length) return;
-
-        // Draw ALL paths faintly
-        playlist.forEach(m => {
-            ctx.beginPath();
-            ctx.strokeStyle = (m.path === activePath) ? "#22c55e" : "#1e293b";
-            ctx.lineWidth = (m.path === activePath) ? 3 : 1;
-            let first = true;
-            m.path.forEach(pt => {
-                const dist = r * (1 - (pt.el/90));
-                const rad = (pt.az - 90) * (Math.PI/180);
-                const x = cx + dist * Math.cos(rad);
-                const y = cy + dist * Math.sin(rad);
-                if(first) { ctx.moveTo(x,y); first=false; } else ctx.lineTo(x,y);
-            });
-            ctx.stroke();
-        });
-    }
-
-    function startMasterTimer() {
-        if(timerInterval) clearInterval(timerInterval);
-        
-        timerInterval = setInterval(() => {
-            const now = new Date();
-            let nextMission = null;
-
-            // Find next upcoming mission
-            for(let m of playlist) {
-                if(m.start > now) {
-                    nextMission = m;
-                    break;
-                }
-            }
-
-            if(nextMission) {
-                // Main Countdown
-                const diff = nextMission.start - now;
-                const h = Math.floor(diff/3600000).toString().padStart(2,'0');
-                const m = Math.floor((diff%3600000)/60000).toString().padStart(2,'0');
-                const s = Math.floor((diff%60000)/1000).toString().padStart(2,'0');
-                
-                document.getElementById('launchMsg').innerText = `NEXT LAUNCH: ${nextMission.name}`;
-                document.getElementById('mainTimer').innerText = `T-MINUS ${h}:${m}:${s}`;
-                document.getElementById('subTimer').innerText = `Start Time: ${nextMission.start.toLocaleTimeString()}`;
-                
-                // Highlight path
-                drawRadar(nextMission.path);
-            } else {
-                document.getElementById('launchMsg').innerText = "ALL MISSIONS COMPLETE";
-                document.getElementById('mainTimer').innerText = "00:00:00";
-            }
-        }, 1000);
-    }
-
-    function generateCode() {
-        let py = "playlist = [\n";
-        playlist.forEach(m => {
-            let pts = "";
-            m.path.forEach(pt => {
-                let az = pt.az > 180 ? pt.az - 360 : pt.az;
-                pts += `(${pt.t},${az.toFixed(1)},${pt.el.toFixed(1)}),`;
-            });
-            // Robot calculates wait time based on time difference from previous or clock
-            // We will just hardcode the Start Timestamp (in seconds from midnight? or relative?)
-            // Safest: Use StopWatch on robot. We pass the delay in seconds from "Now" (time of generation).
-            
-            // To make it easy: The first mission starts at T=0 (Press button).
-            // Subsequent missions start at T + X seconds.
-            const offsetSec = Math.floor((m.start - playlist[0].start) / 1000);
-            
-            py += `    {"name":"${m.name}", "start_sec":${offsetSec}, "path":[${pts}]},\n`;
-        });
-        py += "]\n";
-        
-        const template = `from pybricks.hubs import InventorHub
-from pybricks.pupdevices import Motor
-from pybricks.parameters import Port, Direction, Color, Button
-from pybricks.tools import wait, StopWatch
-
-hub = InventorHub()
-az = Motor(Port.A, Direction.CLOCKWISE)
-el = Motor(Port.B, Direction.COUNTERCLOCKWISE)
-
-${py}
-
-# 1. ARM
-hub.light.on(Color.BLUE)
-print("READY. PRESS CENTER TO ARM.")
-while Button.CENTER not in hub.buttons.pressed(): wait(10)
-while Button.CENTER in hub.buttons.pressed(): wait(10)
-
-# Move to Mission 1 Start
-hub.light.on(Color.ORANGE)
-m1 = playlist[0]
-print("MOVING TO START: " + m1["name"])
-start_pt = m1["path"][0]
-az.run_target(500, start_pt[1], wait=False)
-el.run_target(500, start_pt[2], wait=True)
-
-# 2. WAIT FOR LAUNCH (T=0)
-hub.light.blink(Color.ORANGE, [200, 200])
-print("PRESS CENTER AT EXACT START TIME")
-while Button.CENTER not in hub.buttons.pressed(): wait(10)
-
-# 3. AUTO-PLAYLIST
-hub.light.on(Color.GREEN)
-master_clock = StopWatch()
-master_clock.reset()
-
-for i, mission in enumerate(playlist):
-    print("RUNNING: " + mission["name"])
-    hub.light.on(Color.GREEN)
-    
-    # 1. Wait for Mission Start Time
-    target_start = mission["start_sec"] * 1000
-    if i > 0:
-        # Move to start position while waiting
-        print("Moving to next position...")
-        hub.light.on(Color.YELLOW)
-        sp = mission["path"][0]
-        az.run_target(500, sp[1], wait=False)
-        el.run_target(500, sp[2], wait=True)
-        
-        # Wait remainder of time
-        while master_clock.time() < target_start:
-            wait(100)
-    
-    # 2. Execute Path
-    hub.light.on(Color.GREEN)
-    for pt in mission["path"]:
-        # pt = (TimeOffset, Az, El)
-        # Target time is MissionStart + PointTime
-        target_abs = target_start + (pt[0] * 1000)
-        
-        while master_clock.time() < target_abs:
-            wait(10)
-        
-        az.track_target(pt[1])
-        el.track_target(pt[2])
-
-hub.light.blink(Color.GREEN, [500, 500])
-print("ALL MISSIONS DONE")`;
-
-        document.getElementById('codeBox').value = template;
-    }
-
-    function copyCode() {
-        document.getElementById('codeBox').select();
-        document.execCommand('copy');
-    }
-</script>
-</body>
-</html>
 
 
 
