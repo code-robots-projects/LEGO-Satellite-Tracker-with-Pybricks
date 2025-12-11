@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #222; color: #fff; text-align: center; }
+        button { padding: 20px; font-size: 20px; cursor: pointer; background: #2ecc71; border: none; color: white; border-radius: 8px; }
+        #log { background: #000; border: 1px solid #555; height: 300px; padding: 10px; margin-top: 20px; text-align: left; overflow-y: auto; font-family: monospace; }
+    </style>
+</head>
+<body>
+
+    <h1>🔍 Final Connection Test</h1>
+    <p>Ensure Pybricks Tab is CLOSED before clicking connect.</p>
+    
+    <button onclick="connect()">CONNECT TO ROBOT</button>
+    
+    <div id="log">Waiting...</div>
+
+    <script>
+        // STANDARD PYBRICKS NORDIC UART UUIDS
+        const SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e'; // The Service
+        const RX_UUID      = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // PC -> Robot (Write)
+        const TX_UUID      = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // Robot -> PC (Read/Notify)
+
+        let device, server, service, rx, tx;
+
+        function log(msg) { 
+            document.getElementById('log').innerHTML += `<div>${msg}</div>`; 
+        }
+
+        async function connect() {
+            try {
+                log("Requesting Device...");
+                
+                // 1. SCAN (Relaxed Filters)
+                device = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: false,
+                    filters: [{ namePrefix: 'Pybricks' }, { namePrefix: 'Robot' }],
+                    optionalServices: [SERVICE_UUID]
+                });
+
+                log("Connecting to GATT Server...");
+                server = await device.gatt.connect();
+
+                log("Getting Service...");
+                service = await server.getPrimaryService(SERVICE_UUID);
+
+                log("Getting Characteristics...");
+                rx = await service.getCharacteristic(RX_UUID);
+                tx = await service.getCharacteristic(TX_UUID);
+
+                log("<b style='color:#2ecc71'>SUCCESS! Connected.</b>");
+
+                // 2. LISTEN FOR DATA (Standard Notification Setup)
+                log("Starting Notifications...");
+                await tx.startNotifications();
+                tx.addEventListener('characteristicvaluechanged', handleData);
+                
+                // 3. SEND HELLO
+                log("Sending 'HELLO' to Robot...");
+                const data = new TextEncoder().encode("HELLO\n");
+                await rx.writeValue(data);
+
+            } catch (error) {
+                log("<b style='color:red'>ERROR: " + error + "</b>");
+            }
+        }
+
+        function handleData(event) {
+            const val = new TextDecoder().decode(event.target.value);
+            // Pybricks sends data in chunks, usually ending in newline
+            log("RECEIVED: " + val);
+        }
+    </script>
+</body>
+</html>
