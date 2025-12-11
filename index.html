@@ -5,72 +5,260 @@
     <title>LEGO Satellite Commander</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/4.1.3/satellite.min.js"></script>
     <style>
-        body { background-color: #0f172a; color: #e2e8f0; font-family: 'Segoe UI', sans-serif; text-align: center; margin: 0; padding: 20px; }
-        .container { max-width: 600px; margin: 0 auto; }
+        body { background-color: #0f172a; color: white; font-family: 'Segoe UI', sans-serif; text-align: center; padding: 10px; margin: 0; }
+        .container { max-width: 800px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        @media (max-width: 600px) { .container { grid-template-columns: 1fr; } }
         
-        /* UI Cards */
-        .card { background: #1e293b; padding: 20px; border-radius: 16px; margin-bottom: 20px; border: 1px solid #334155; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-        h1 { color: #60a5fa; margin-top: 0; }
-        h3 { border-bottom: 1px solid #475569; padding-bottom: 10px; margin-top: 0; color: #94a3b8; }
+        .box { background: #1e293b; padding: 15px; border-radius: 12px; border: 1px solid #334155; }
         
-        /* Buttons */
-        button { padding: 15px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; width: 100%; transition: 0.2s; color: white; font-size: 16px; margin-top: 10px; }
-        button:disabled { opacity: 0.5; cursor: not-allowed; }
-        .btn-blue { background: #3b82f6; } .btn-blue:hover { background: #2563eb; }
-        .btn-green { background: #10b981; } .btn-green:hover { background: #059669; }
-        .btn-red { background: #ef4444; }
+        button { padding: 12px; font-size: 16px; border-radius: 8px; border: none; cursor: pointer; width: 100%; margin-top: 5px; color: white; font-weight: bold; }
+        .btn-green { background-color: #22c55e; } .btn-green:hover { background: #16a34a; }
+        .btn-blue { background-color: #3b82f6; }  .btn-blue:hover { background: #2563eb; }
+        .btn-red { background-color: #ef4444; }   .btn-red:hover { background: #dc2626; }
         
-        /* Inputs */
-        input { background: #334155; border: 1px solid #475569; color: white; padding: 10px; border-radius: 8px; width: 80px; text-align: center; margin: 5px; }
-
-        /* RADAR SCREEN */
-        #radar { 
-            width: 280px; height: 280px; 
-            background: radial-gradient(circle, #0f172a 0%, #020617 100%);
-            border-radius: 50%; border: 2px solid #334155; 
-            margin: 20px auto; position: relative; overflow: hidden; 
-        }
-        .grid-line { position: absolute; background: #334155; }
-        .grid-ring { position: absolute; border: 1px solid #334155; border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); }
-        .label { position: absolute; font-size: 12px; color: #64748b; font-weight: bold; }
+        input { padding: 8px; margin: 5px; width: 80px; text-align: center; background: #334155; border: 1px solid #475569; color: white; border-radius: 4px; }
         
-        /* THE TARGET DOT */
-        #dot { 
-            width: 16px; height: 16px; background: #00ff00; 
-            border-radius: 50%; position: absolute; 
-            box-shadow: 0 0 15px #00ff00; 
-            display: none; 
-            transition: top 0.5s, left 0.5s; 
-            transform: translate(-50%, -50%); /* Centers the dot on coords */
-        }
+        /* RADAR STYLES */
+        #radarContainer { position: relative; width: 260px; height: 260px; margin: 10px auto; background: #020617; border-radius: 50%; border: 2px solid #475569; overflow: hidden; }
+        .axis { position: absolute; background: #1e293b; }
+        .label { position: absolute; font-size: 10px; color: #64748b; font-weight: bold; }
+        #dot { width: 14px; height: 14px; background: #00ff00; border-radius: 50%; position: absolute; box-shadow: 0 0 10px #00ff00; display: none; transform: translate(-50%, -50%); transition: top 0.5s, left 0.5s; }
         
-        .data-display { font-size: 1.2em; color: #fbbf24; font-weight: bold; }
-        #log { font-family: monospace; color: #22c55e; font-size: 0.9em; margin-top: 10px; min-height: 1.2em; }
+        .status-txt { font-size: 1.2em; font-weight: bold; color: #fbbf24; margin: 5px 0; }
     </style>
 </head>
 <body>
 
-<div class="container">
     <h1>🛰️ LEGO Satellite Commander</h1>
 
-    <div class="card">
-        <h3>1. Mission Prep</h3>
-        <div>
-            <input id="lat" placeholder="Lat">
-            <input id="lon" placeholder="Lon">
-            <button class="btn-blue" style="width: auto;" onclick="getLocation()">📍 Detect</button>
+    <div class="container">
+        <div style="display: flex; flex-direction: column; gap: 15px;">
+            <div class="box">
+                <h3>1. Configuration</h3>
+                <button class="btn-blue" onclick="getLocation()">📍 Detect Location</button>
+                <div>
+                    <input id="lat" placeholder="Lat"> <input id="lon" placeholder="Lon">
+                </div>
+                <button class="btn-blue" onclick="getData()">📥 Download Sat Data</button>
+                <div id="dataStatus" style="color: #94a3b8; font-size: 0.9em; margin-top:5px;">Waiting for TLEs...</div>
+            </div>
+
+            <div class="box">
+                <h3>2. Mission Control</h3>
+                <p style="font-size:0.9em; color:#94a3b8;">Turn Hub ON. Wait for Blue Blink.</p>
+                <button class="btn-green" id="conBtn" onclick="connect()">📡 Connect & Start</button>
+                <div style="margin-top: 15px;">
+                    <button id="trackBtn" class="btn-blue" onclick="toggleTrack()" disabled>AUTO TRACKING: OFF</button>
+                </div>
+            </div>
         </div>
-        <button class="btn-blue" onclick="downloadData()">📥 Download Satellite Data</button>
-        <div id="dataStatus" style="color: #fbbf24; margin-top: 10px;">Waiting for data...</div>
+
+        <div class="box">
+            <h3 id="satName" style="color: #60a5fa; margin: 0 0 10px 0;">-- IDLE --</h3>
+            <div class="status-txt">
+                Az: <span id="azVal">0</span>° | El: <span id="elVal">0</span>°
+            </div>
+
+            <div id="radarContainer">
+                <div class="axis" style="width:100%; height:1px; top:50%;"></div>
+                <div class="axis" style="width:1px; height:100%; left:50%;"></div>
+                <span class="label" style="top:5px; left:50%; transform:translateX(-50%);">N</span>
+                <span class="label" style="bottom:5px; left:50%; transform:translateX(-50%);">S</span>
+                <span class="label" style="top:50%; left:5px; transform:translateY(-50%);">W</span>
+                <span class="label" style="top:50%; right:5px; transform:translateY(-50%);">E</span>
+                <div id="dot"></div>
+            </div>
+            <div style="font-size: 0.8em; color: #64748b;">Center = Zenith (90°) | Edge = Horizon (0°)</div>
+        </div>
     </div>
 
-    <div class="card">
-        <h3>2. Mission Control</h3>
-        <p style="color: #94a3b8; font-size: 0.9em;">Turn on Robot. Wait for Blue Pulse.</p>
+    <script>
+        // --- CONFIG ---
+        const SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+        const WRITE   = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
         
-        <button id="btnConnect" class="btn-green" onclick="connectAndStart()">📡 Connect & Start Mission</button>
-        
-        <h2 id="satName" style="color: #60a5fa; margin: 15px 0; min-height: 1.2em;">-- STANDBY --</h2>
-        <div style="display:flex; justify-content:space-between; padding: 0 40px;">
-            <span>Az: <span id="valAz" class="data-display">0</span>°</span>
-            <span>El: <span id="valEl" class="data-display">0</span>°</span>
+        // --- STATE ---
+        let char = null;
+        let sats = [];
+        let running = false;
+        let currentSat = "";
+
+        // --- 1. SETUP ---
+        function getLocation() {
+            navigator.geolocation.getCurrentPosition(p => {
+                document.getElementById('lat').value = p.coords.latitude.toFixed(4);
+                document.getElementById('lon').value = p.coords.longitude.toFixed(4);
+            });
+        }
+
+        async function getData() {
+            document.getElementById('dataStatus').innerText = "Downloading...";
+            try {
+                const res = await fetch('https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=tle');
+                const txt = await res.text();
+                const lines = txt.split('\n');
+                sats = [];
+                for(let i=0; i<lines.length; i+=3) {
+                    if(lines[i+1]?.startsWith('1')) {
+                        sats.push({
+                            name: lines[i].trim(),
+                            rec: satellite.twoline2satrec(lines[i+1], lines[i+2])
+                        });
+                    }
+                }
+                document.getElementById('dataStatus').innerText = `Ready! ${sats.length} Satellites Loaded.`;
+                document.getElementById('dataStatus').style.color = "#4ade80";
+                speak("Satellite data downloaded.");
+            } catch(e) { alert("Download failed"); }
+        }
+
+        // --- 2. CONNECT ---
+        async function connect() {
+            try {
+                const dev = await navigator.bluetooth.requestDevice({
+                    filters: [{namePrefix:'Pybricks'}, {namePrefix:'Robot'}],
+                    optionalServices: [SERVICE]
+                });
+                const server = await dev.gatt.connect();
+                const service = await server.getPrimaryService(SERVICE);
+                char = await service.getCharacteristic(WRITE);
+                
+                document.getElementById('conBtn').innerText = "Connected";
+                document.getElementById('conBtn').disabled = true;
+                document.getElementById('trackBtn').disabled = false;
+                
+                // WAKE UP THE ROBOT
+                await send(0, 0); 
+                speak("System Online. Robot Connected.");
+                
+                // Automatically start tracking
+                toggleTrack(); 
+
+            } catch(e) { alert("Connection Error: " + e); }
+        }
+
+        // --- 3. CORE LOOP ---
+        function toggleTrack() {
+            running = !running;
+            const btn = document.getElementById('trackBtn');
+            if(running) {
+                btn.innerText = "AUTO TRACKING: ON";
+                btn.className = "btn-red";
+                speak("Scanning sky.");
+                loop();
+            } else {
+                btn.innerText = "AUTO TRACKING: OFF";
+                btn.className = "btn-blue";
+                send(0,0);
+                updateRadar(null, null);
+                document.getElementById('satName').innerText = "IDLE";
+            }
+        }
+
+        function loop() {
+            if(!running) return;
+
+            const lat = parseFloat(document.getElementById('lat').value);
+            const lon = parseFloat(document.getElementById('lon').value);
+            if(!lat || !lon) return;
+
+            const obs = { 
+                latitude: satellite.degreesToRadians(lat), 
+                longitude: satellite.degreesToRadians(lon), 
+                height: 0.03 
+            };
+            const now = new Date();
+            const gmst = satellite.gstime(now);
+
+            let best = null, maxEl = 0, bestAz = 0;
+
+            for(let s of sats) {
+                const pv = satellite.propagate(s.rec, now);
+                if(!pv.position) continue;
+                const look = satellite.ecfToLookAngles(obs, satellite.eciToEcf(pv.position, gmst));
+                const el = satellite.radiansToDegrees(look.elevation);
+                const az = satellite.radiansToDegrees(look.azimuth);
+
+                if(el > 10 && el > maxEl) {
+                    maxEl = el;
+                    bestAz = az;
+                    best = s.name;
+                }
+            }
+
+            if(best) {
+                // Update Text
+                document.getElementById('satName').innerText = best;
+                document.getElementById('azVal').innerText = bestAz.toFixed(0);
+                document.getElementById('elVal').innerText = maxEl.toFixed(0);
+                
+                // Update Radar
+                updateRadar(bestAz, maxEl);
+                
+                // Voice Announce (New Target)
+                if(currentSat !== best) {
+                    currentSat = best;
+                    speak("Tracking " + best);
+                }
+
+                // Send to Robot (Convert 0-360 to -180/180)
+                let robotAz = bestAz;
+                if(robotAz > 180) robotAz -= 360;
+                send(robotAz, maxEl);
+
+            } else {
+                document.getElementById('satName').innerText = "Scanning (Empty Sky)";
+                updateRadar(null, null);
+                send(0,0);
+                
+                if(currentSat !== "") {
+                    currentSat = "";
+                    speak("Target lost.");
+                }
+            }
+
+            setTimeout(loop, 500);
+        }
+
+        // --- 4. HELPERS ---
+        async function send(az, el) {
+            if(!char) return;
+            const cmd = `${az.toFixed(1)},${el.toFixed(1)}\n`;
+            try { await char.writeValue(new TextEncoder().encode(cmd)); } catch(e){}
+        }
+
+        function speak(text) {
+            if(window.speechSynthesis) {
+                const u = new SpeechSynthesisUtterance(text);
+                window.speechSynthesis.speak(u);
+            }
+        }
+
+        function updateRadar(az, el) {
+            const dot = document.getElementById('dot');
+            if(az === null) {
+                dot.style.display = 'none';
+                return;
+            }
+            dot.style.display = 'block';
+
+            // Radar Math:
+            // 90deg Elevation = Center (0px offset)
+            // 0deg Elevation = Edge (130px offset, half of 260px)
+            const radius = 130;
+            const dist = radius * (1 - (el / 90));
+
+            // Angle Math:
+            // Compass 0 (North) = CSS -90deg
+            // We need to rotate standard radians by -90 deg
+            const angleRad = (az - 90) * (Math.PI / 180);
+
+            const x = radius + dist * Math.cos(angleRad);
+            const y = radius + dist * Math.sin(angleRad);
+
+            dot.style.left = x + 'px';
+            dot.style.top = y + 'px';
+        }
+    </script>
+</body>
+</html>
