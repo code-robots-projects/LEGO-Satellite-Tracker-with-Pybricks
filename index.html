@@ -1,214 +1,63 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>LEGO USB Satellite Tracker</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/4.1.3/satellite.min.js"></script>
     <style>
-        body { background-color: #0f172a; color: #e2e8f0; font-family: 'Segoe UI', sans-serif; text-align: center; padding: 20px; }
-        .container { max-width: 600px; margin: 0 auto; }
-        
-        .card { background: #1e293b; padding: 20px; border-radius: 16px; margin-bottom: 20px; border: 1px solid #334155; }
-        h1 { color: #06b6d4; } /* Cyan for USB */
-        
-        button { padding: 15px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; width: 100%; margin-top: 10px; color: white; }
-        .btn-cyan { background-color: #06b6d4; } .btn-cyan:hover { background: #0891b2; }
-        .btn-blue { background-color: #3b82f6; }
-        .btn-red { background-color: #ef4444; }
-        
-        /* Radar */
-        #radar { width: 280px; height: 280px; background: #020617; border-radius: 50%; border: 2px solid #06b6d4; margin: 15px auto; position: relative; }
-        .axis { position: absolute; background: #1e293b; }
-        .dot { width: 14px; height: 14px; background: #00ff00; border-radius: 50%; position: absolute; display: none; transform: translate(-50%, -50%); }
-        .label { position: absolute; font-size: 10px; color: #64748b; font-weight: bold; }
-        
-        .data-val { color: #fbbf24; font-weight: bold; font-size: 1.3em; font-family: monospace; }
+        body { font-family: sans-serif; text-align: center; padding: 20px; background: #eee; }
+        button { padding: 20px 40px; font-size: 20px; cursor: pointer; margin: 10px; border-radius: 10px; border: none; }
+        .connect { background: #06b6d4; color: white; }
+        .test { background: #3498db; color: white; }
+        .stop { background: #e74c3c; color: white; }
+        #log { font-family: monospace; color: #333; margin-top: 20px; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>🔌 LEGO USB Tracker</h1>
+    <h1>🔌 USB Protocol Fix</h1>
+    <p>1. Start Robot (Cyan Light).<br>2. Plug into THIS computer.</p>
 
-    <div class="card">
-        <h3>1. Setup</h3>
-        <button class="btn-blue" onclick="getLocation()">📍 Detect Location</button>
-        <button class="btn-blue" onclick="getData()">📥 Get Sat Data</button>
-        <p id="dataStatus" style="color: #fbbf24; font-size: 0.9em;">Waiting for Data...</p>
-        <input type="hidden" id="lat"><input type="hidden" id="lon">
-    </div>
+    <button id="btnCon" class="connect" onclick="connect()">1. Connect USB</button>
+    <br><br>
+    <button class="test" onclick="send('90,45')">Test: Spin & Tilt</button>
+    <button class="stop" onclick="send('0,0')">Reset (0,0)</button>
 
-    <div class="card">
-        <h3>2. USB Connection</h3>
-        <p style="font-size: 0.9em; color: #94a3b8;">Close Pybricks Tab first!</p>
-        <button id="btnConnect" class="btn-cyan" onclick="connectUSB()">🔌 Connect USB</button>
-    </div>
+    <div id="log">Disconnected</div>
 
-    <div class="card">
-        <h3>3. Mission Control</h3>
-        <h2 id="satName" style="color: #60a5fa;">-- IDLE --</h2>
-        
-        <div style="display:flex; justify-content:space-around; margin-bottom: 10px;">
-            <div>Az: <span id="valAz" class="data-val">0.0</span>°</div>
-            <div>El: <span id="valEl" class="data-val">0.0</span>°</div>
-        </div>
+    <script>
+        let port, writer;
 
-        <div id="radar">
-            <div class="axis" style="width:100%; height:1px; top:50%;"></div>
-            <div class="axis" style="width:1px; height:100%; left:50%;"></div>
-            <span class="label" style="top:5px; left:50%; transform:translateX(-50%);">N</span>
-            <span class="label" style="bottom:5px; left:50%; transform:translateX(-50%);">S</span>
-            <span class="label" style="top:50%; left:5px; transform:translateY(-50%);">W</span>
-            <span class="label" style="top:50%; right:5px; transform:translateY(-50%);">E</span>
-            <div id="dot" class="dot"></div>
-        </div>
+        async function connect() {
+            if ("serial" in navigator) {
+                try {
+                    // Request Port
+                    port = await navigator.serial.requestPort();
+                    
+                    // Open with standard Pybricks settings
+                    await port.open({ baudRate: 115200 });
+                    
+                    const encoder = new TextEncoderStream();
+                    encoder.readable.pipeTo(port.writable);
+                    writer = encoder.writable.getWriter();
 
-        <button id="btnTrack" class="btn-blue" onclick="toggleTracking()" disabled>START AUTO-TRACKING</button>
-    </div>
-</div>
-
-<script>
-    let port, writer;
-    let satellites = [];
-    let isTracking = false;
-    let currentSat = "";
-
-    // --- 1. SETUP ---
-    function getLocation() {
-        navigator.geolocation.getCurrentPosition(p => {
-            document.getElementById('lat').value = p.coords.latitude;
-            document.getElementById('lon').value = p.coords.longitude;
-            alert("Location Found!");
-        });
-    }
-
-    async function getData() {
-        const res = await fetch('https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=tle');
-        const txt = await res.text();
-        const lines = txt.split('\n');
-        satellites = [];
-        for(let i=0; i<lines.length; i+=3) {
-            if(lines[i+1]?.startsWith('1')) {
-                satellites.push({
-                    name: lines[i].trim(),
-                    rec: satellite.twoline2satrec(lines[i+1], lines[i+2])
-                });
-            }
-        }
-        document.getElementById('dataStatus').innerText = `${satellites.length} Satellites Ready`;
-        document.getElementById('dataStatus').style.color = '#4ade80';
-    }
-
-    // --- 2. USB CONNECTION (WEB SERIAL) ---
-    async function connectUSB() {
-        if ("serial" in navigator) {
-            try {
-                port = await navigator.serial.requestPort();
-                await port.open({ baudRate: 115200 }); // Standard Pybricks Baud Rate
-                
-                const textEncoder = new TextEncoderStream();
-                const writableStreamClosed = textEncoder.readable.pipeTo(port.writable);
-                writer = textEncoder.writable.getWriter();
-
-                document.getElementById('btnConnect').innerText = "USB Connected";
-                document.getElementById('btnConnect').disabled = true;
-                document.getElementById('btnTrack').disabled = false;
-                
-                // Wake up robot
-                sendToRobot(0,0);
-                
-            } catch(e) { alert("USB Error: " + e); }
-        } else {
-            alert("Your browser does not support Web Serial. Use Chrome or Edge.");
-        }
-    }
-
-    // --- 3. TRACKING ---
-    function toggleTracking() {
-        isTracking = !isTracking;
-        const btn = document.getElementById('btnTrack');
-        if(isTracking) {
-            btn.innerText = "STOP TRACKING";
-            btn.className = "btn-red";
-            speak("System Active.");
-            loop();
-        } else {
-            btn.innerText = "START AUTO-TRACKING";
-            btn.className = "btn-blue";
-            sendToRobot(0,0);
-        }
-    }
-
-    function loop() {
-        if(!isTracking) return;
-
-        const lat = parseFloat(document.getElementById('lat').value);
-        const lon = parseFloat(document.getElementById('lon').value);
-        if(!lat) { alert("Get Location first!"); toggleTracking(); return; }
-
-        const obs = { latitude: satellite.degreesToRadians(lat), longitude: satellite.degreesToRadians(lon), height: 0.03 };
-        const now = new Date();
-        const gmst = satellite.gstime(now);
-
-        let best = null, maxEl = 0, bestAz = 0;
-
-        for(let s of satellites) {
-            const pv = satellite.propagate(s.rec, now);
-            if(!pv.position) continue;
-            const look = satellite.ecfToLookAngles(obs, satellite.eciToEcf(pv.position, gmst));
-            const el = satellite.radiansToDegrees(look.elevation);
-            const az = satellite.radiansToDegrees(look.azimuth);
-
-            if(el > 10 && el > maxEl) {
-                maxEl = el;
-                bestAz = az;
-                best = s.name;
+                    document.getElementById('log').innerText = "CONNECTED! Ready to send.";
+                    document.getElementById('btnCon').disabled = true;
+                    document.getElementById('btnCon').innerText = "USB Active";
+                } catch(e) {
+                    document.getElementById('log').innerText = "Error: " + e;
+                }
+            } else {
+                alert("Please use Chrome or Edge.");
             }
         }
 
-        if(best) {
-            let robotAz = bestAz;
-            if(robotAz > 180) robotAz -= 360;
-
-            document.getElementById('satName').innerText = best;
-            document.getElementById('valAz').innerText = bestAz.toFixed(1);
-            document.getElementById('valEl').innerText = maxEl.toFixed(1);
-            updateRadar(bestAz, maxEl);
+        async function send(msg) {
+            if(!writer) return alert("Not Connected");
             
-            if(currentSat !== best) { currentSat = best; speak("Tracking " + best); }
+            // THE FIX: Send both Carriage Return (\r) and New Line (\n)
+            const data = msg + "\r\n";
             
-            sendToRobot(robotAz, maxEl);
-        } else {
-            document.getElementById('satName').innerText = "Scanning...";
-            updateRadar(null, null);
-            sendToRobot(0,0);
+            await writer.write(data);
+            document.getElementById('log').innerText = "Sent: " + msg;
         }
-
-        setTimeout(loop, 500);
-    }
-
-    async function sendToRobot(az, el) {
-        if(!writer) return;
-        const cmd = `${az.toFixed(1)},${el.toFixed(1)}\r\n`; // Note: \r\n is safer for Serial
-        await writer.write(cmd);
-    }
-
-    function updateRadar(az, el) {
-        const dot = document.getElementById('dot');
-        if(az === null) { dot.style.display = 'none'; return; }
-        dot.style.display = 'block';
-        
-        const r = 130;
-        const dist = r * (1 - (el/90));
-        const rad = (az - 90) * (Math.PI / 180);
-        
-        dot.style.left = (140 + dist * Math.cos(rad)) + 'px';
-        dot.style.top = (140 + dist * Math.sin(rad)) + 'px';
-    }
-    
-    function speak(txt) {
-        if(window.speechSynthesis) window.speechSynthesis.speak(new SpeechSynthesisUtterance(txt));
-    }
-</script>
+    </script>
 </body>
 </html>
