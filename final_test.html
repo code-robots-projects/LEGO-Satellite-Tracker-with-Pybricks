@@ -1,76 +1,164 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LEGO Mission Control (Smart Memory)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/4.1.3/satellite.min.js"></script>
     <style>
-        body { font-family: sans-serif; padding: 20px; background: #222; color: #fff; text-align: center; }
-        button { padding: 20px; font-size: 20px; cursor: pointer; background: #2ecc71; border: none; color: white; border-radius: 8px; }
-        #log { background: #000; border: 1px solid #555; height: 300px; padding: 10px; margin-top: 20px; text-align: left; overflow-y: auto; font-family: monospace; }
+        :root { --bg: #0f172a; --panel: #1e293b; --text: #e2e8f0; --blue: #3b82f6; --green: #22c55e; --orange: #f59e0b; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        
+        .grid { display: grid; grid-template-columns: 350px 1fr; gap: 20px; margin-top: 20px; }
+        @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+        .card { background: var(--panel); border-radius: 12px; padding: 20px; border: 1px solid #334155; }
+        h1 { color: #60a5fa; text-align: center; margin-top: 0; text-transform: uppercase; letter-spacing: 2px; }
+        h3 { color: #94a3b8; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-top: 0; }
+
+        .control-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; }
+        input { background: #0f172a; border: 1px solid #475569; color: white; padding: 10px; border-radius: 6px; flex: 1; text-align: center; }
+        
+        button { padding: 12px; border: none; cursor: pointer; border-radius: 6px; font-weight: bold; color: white; transition: 0.2s; }
+        .btn-blue { background: var(--blue); width: 100%; } .btn-blue:hover { background: #2563eb; }
+        .btn-green { background: var(--green); } .btn-green:hover { background: #16a34a; }
+        .btn-copy { background: #475569; width: 100%; margin-top: 10px; }
+
+        .playlist { max-height: 500px; overflow-y: hidden; display: flex; flex-direction: column; gap: 8px; }
+        .playlist-item { background: #0f172a; padding: 15px; border-radius: 8px; border: 1px solid #334155; display: grid; grid-template-columns: 40px 1fr auto; align-items: center; }
+        .playlist-item.iss { border-color: var(--orange); background: #3d2203; } 
+        .playlist-item.active-mission { border-color: var(--green); background: #064e3b; }
+
+        .slot-badge { background: #475569; color: white; border-radius: 50%; width: 25px; height: 25px; display: flex; align-items: center; justify-content: center; font-size: 0.8em; font-weight: bold; }
+        .sat-info div:first-child { font-weight: bold; font-size: 1.1em; }
+        .sat-info div:last-child { font-size: 0.85em; color: #94a3b8; }
+        .sat-el { font-weight: bold; color: var(--green); }
+
+        #radarContainer { width: 300px; height: 300px; margin: 0 auto; background: #000; border-radius: 50%; border: 2px solid #475569; position: relative; }
+        canvas { width: 100%; height: 100%; border-radius: 50%; }
+        .compass { position: absolute; color: #64748b; font-size: 0.8em; font-weight: bold; }
+        
+        #timerBox { text-align: center; background: #000; padding: 15px; border-radius: 8px; margin-top: 20px; border: 1px solid #333; }
+        #mainTimer { font-family: monospace; font-size: 2.5em; color: var(--green); display: block; }
+        #subTimer { font-family: monospace; font-size: 1.2em; color: var(--orange); display: block; margin-top: 5px; }
+        #launchMsg { color: #94a3b8; font-size: 0.9em; }
+
+        textarea { width: 100%; height: 150px; background: #0f172a; color: #a5f3fc; font-family: monospace; padding: 10px; border-radius: 8px; border: 1px solid #334155; margin-top: 10px; resize: vertical; }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
 
-    <h1>🔍 Final Connection Test</h1>
-    <p>Ensure Pybricks Tab is CLOSED before clicking connect.</p>
+<div class="container">
+    <h1>🛰️ LEGO Mission Control (Smart Memory)</h1>
+
+    <div class="card">
+        <div class="control-row">
+            <input type="number" id="lat" placeholder="Latitude" step="0.0001">
+            <input type="number" id="lon" placeholder="Longitude" step="0.0001">
+            <button class="btn-green" style="flex:0 0 100px" onclick="detectLoc()">📍 Detect</button>
+            <input type="time" id="startTime">
+            <button class="btn-blue" style="flex:2" onclick="generatePlaylist()">🚀 Build Smart Playlist</button>
+        </div>
+        <div id="status" style="text-align: center; color: var(--orange); font-weight: bold; height: 20px;"></div>
+    </div>
+
+    <div id="mainUI" class="grid hidden">
+        
+        <div class="card">
+            <h3>Mission Playlist</h3>
+            <div id="playlist" class="playlist"></div>
+        </div>
+
+        <div class="card">
+            <h3>Mission Control</h3>
+            
+            <div id="radarContainer">
+                <canvas id="radar"></canvas>
+                <span class="compass" style="top:5px; left:50%; transform:translate(-50%,0)">N</span>
+                <span class="compass" style="bottom:5px; left:50%; transform:translate(-50%,0)">S</span>
+                <span class="compass" style="top:50%; left:5px; transform:translate(0,-50%)">W</span>
+                <span class="compass" style="top:50%; right:5px; transform:translate(0,-50%)">E</span>
+            </div>
+
+            <div id="timerBox">
+                <div id="launchMsg">WAITING TO START</div>
+                <div id="mainTimer">--:--:--</div>
+                <div id="subTimer">Next: [Loading...]</div>
+            </div>
+
+            <div style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #334155;">
+                <h3>Robot Python Code (Optimized)</h3>
+                <p style="font-size:0.85em; color:#94a3b8;">
+                    Uses Smart Interpolation to save memory.<br>
+                    <b>LEFT:</b> Arm. <b>RIGHT:</b> Launch.
+                </p>
+                <textarea id="codeBox" readonly></textarea>
+                <button class="btn-copy" onclick="copyCode()">📋 Copy Code</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const now = new Date();
+    document.getElementById('startTime').value = now.toTimeString().substring(0,5);
+    const canvas = document.getElementById('radar');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 300; canvas.height = 300;
     
-    <button onclick="connect()">CONNECT TO ROBOT</button>
-    
-    <div id="log">Waiting...</div>
+    let playlist = [];
+    let timerInterval = null;
+    let animationFrame = null;
 
-    <script>
-        // STANDARD PYBRICKS NORDIC UART UUIDS
-        const SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e'; // The Service
-        const RX_UUID      = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // PC -> Robot (Write)
-        const TX_UUID      = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // Robot -> PC (Read/Notify)
+    // --- 1. LOCATION ---
+    function detectLoc() {
+        if(!navigator.geolocation) return alert("Browser needs permission.");
+        navigator.geolocation.getCurrentPosition(p => {
+            document.getElementById('lat').value = p.coords.latitude.toFixed(4);
+            document.getElementById('lon').value = p.coords.longitude.toFixed(4);
+        });
+    }
 
-        let device, server, service, rx, tx;
+    // --- 2. GENERATE PLAYLIST ---
+    async function generatePlaylist() {
+        const lat = parseFloat(document.getElementById('lat').value);
+        const lon = parseFloat(document.getElementById('lon').value);
+        if(isNaN(lat)) return alert("Set Location First.");
 
-        function log(msg) { 
-            document.getElementById('log').innerHTML += `<div>${msg}</div>`; 
-        }
+        const status = document.getElementById('status');
+        status.innerText = "Downloading Data...";
 
-        async function connect() {
-            try {
-                log("Requesting Device...");
-                
-                // 1. SCAN (Relaxed Filters)
-                device = await navigator.bluetooth.requestDevice({
-                    acceptAllDevices: false,
-                    filters: [{ namePrefix: 'Pybricks' }, { namePrefix: 'Robot' }],
-                    optionalServices: [SERVICE_UUID]
-                });
+        try {
+            const res = await fetch('https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=tle');
+            const txt = await res.text();
+            const lines = txt.split('\n');
+            const sats = [];
+            let issSat = null;
 
-                log("Connecting to GATT Server...");
-                server = await device.gatt.connect();
-
-                log("Getting Service...");
-                service = await server.getPrimaryService(SERVICE_UUID);
-
-                log("Getting Characteristics...");
-                rx = await service.getCharacteristic(RX_UUID);
-                tx = await service.getCharacteristic(TX_UUID);
-
-                log("<b style='color:#2ecc71'>SUCCESS! Connected.</b>");
-
-                // 2. LISTEN FOR DATA (Standard Notification Setup)
-                log("Starting Notifications...");
-                await tx.startNotifications();
-                tx.addEventListener('characteristicvaluechanged', handleData);
-                
-                // 3. SEND HELLO
-                log("Sending 'HELLO' to Robot...");
-                const data = new TextEncoder().encode("HELLO\n");
-                await rx.writeValue(data);
-
-            } catch (error) {
-                log("<b style='color:red'>ERROR: " + error + "</b>");
+            for(let i=0; i<lines.length; i+=3) {
+                if(lines[i+1]?.startsWith('1')) {
+                    const name = lines[i].trim();
+                    const s = { name: name, rec: satellite.twoline2satrec(lines[i+1], lines[i+2]) };
+                    sats.push(s);
+                    if(name.includes("ZARYA") || name.includes("ISS")) issSat = s;
+                }
             }
-        }
 
-        function handleData(event) {
-            const val = new TextDecoder().decode(event.target.value);
-            // Pybricks sends data in chunks, usually ending in newline
-            log("RECEIVED: " + val);
-        }
-    </script>
-</body>
-</html>
+            status.innerText = "Scanning Sky...";
+            const timeParts = document.getElementById('startTime').value.split(':');
+            const startSearch = new Date();
+            startSearch.setHours(timeParts[0], timeParts[1], 0, 0);
+            
+            const obs = { latitude: satellite.degreesToRadians(lat), longitude: satellite.degreesToRadians(lon), height: 0.03 };
+            const found = [];
+
+            for(let s of sats) {
+                let p = findNextPass(s, startSearch, 60, obs);
+                if(p && p.maxEl > 15) found.push(p);
+            }
+
+            if(issSat) {
+                let issPass = findNextPass(issSat, startSearch, 180, obs);
+                if(issPass && issPass.maxEl >
