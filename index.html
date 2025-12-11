@@ -1,4 +1,397 @@
-from pybricks.hubs import InventorHub
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LEGO Mission Commander HD</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/4.1.3/satellite.min.js"></script>
+    <style>
+        :root { --bg: #0f172a; --panel: #1e293b; --text: #e2e8f0; --blue: #3b82f6; --green: #22c55e; --orange: #f59e0b; --red: #ef4444; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        
+        .grid { display: grid; grid-template-columns: 350px 1fr; gap: 20px; margin-top: 20px; }
+        @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+        .card { background: var(--panel); border-radius: 12px; padding: 20px; border: 1px solid #334155; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        h1 { color: #60a5fa; text-align: center; margin-top: 0; text-transform: uppercase; letter-spacing: 2px; }
+        h3 { color: #94a3b8; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-top: 0; }
+
+        .control-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; }
+        input { background: #0f172a; border: 1px solid #475569; color: white; padding: 10px; border-radius: 6px; flex: 1; text-align: center; font-family: monospace; }
+        
+        button { padding: 12px; border: none; cursor: pointer; border-radius: 6px; font-weight: bold; color: white; transition: 0.2s; }
+        .btn-blue { background: var(--blue); width: 100%; } .btn-blue:hover { background: #2563eb; }
+        .btn-green { background: var(--green); } .btn-green:hover { background: #16a34a; }
+        .btn-copy { background: #475569; width: 100%; margin-top: 10px; }
+
+        .playlist { max-height: 500px; overflow-y: hidden; display: flex; flex-direction: column; gap: 8px; }
+        .playlist-item { background: #0f172a; padding: 15px; border-radius: 8px; border: 1px solid #334155; display: grid; grid-template-columns: 40px 1fr auto; align-items: center; transition: all 0.3s ease; }
+        .playlist-item.iss { border-color: var(--orange); background: #3d2203; } 
+        .playlist-item.active-mission { border-color: var(--green); background: #064e3b; box-shadow: 0 0 15px rgba(34, 197, 94, 0.2); }
+
+        .slot-badge { background: #475569; color: white; border-radius: 50%; width: 25px; height: 25px; display: flex; align-items: center; justify-content: center; font-size: 0.8em; font-weight: bold; }
+        .sat-info div:first-child { font-weight: bold; font-size: 1.1em; }
+        .sat-info div:last-child { font-size: 0.85em; color: #94a3b8; }
+        .sat-el { font-weight: bold; color: var(--green); }
+
+        #radarContainer { width: 320px; height: 320px; margin: 0 auto; background: #000; border-radius: 50%; border: 2px solid #475569; position: relative; }
+        canvas { width: 100%; height: 100%; border-radius: 50%; }
+        .compass { position: absolute; color: #64748b; font-size: 0.8em; font-weight: bold; }
+        
+        #timerBox { text-align: center; background: #000; padding: 15px; border-radius: 8px; margin-top: 20px; border: 1px solid #333; }
+        #mainTimer { font-family: monospace; font-size: 2.5em; color: var(--green); display: block; }
+        #subTimer { font-family: monospace; font-size: 1.2em; color: var(--orange); display: block; margin-top: 5px; }
+        #launchMsg { color: #94a3b8; font-size: 0.9em; letter-spacing: 1px; }
+
+        textarea { width: 100%; height: 150px; background: #0f172a; color: #a5f3fc; font-family: monospace; padding: 10px; border-radius: 8px; border: 1px solid #334155; margin-top: 10px; resize: vertical; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🛰️ LEGO Mission Commander HD</h1>
+
+    <div class="card">
+        <div class="control-row">
+            <input type="number" id="lat" placeholder="Latitude" step="0.0001">
+            <input type="number" id="lon" placeholder="Longitude" step="0.0001">
+            <button class="btn-green" style="flex:0 0 100px" onclick="detectLoc()">📍 Detect</button>
+            <input type="time" id="startTime">
+            <button class="btn-blue" style="flex:2" onclick="generatePlaylist()">🚀 Build HD Playlist</button>
+        </div>
+        <div id="status" style="text-align: center; color: var(--orange); font-weight: bold; height: 20px;"></div>
+    </div>
+
+    <div id="mainUI" class="grid hidden">
+        
+        <div class="card">
+            <h3>Mission Playlist</h3>
+            <p style="font-size:0.85em; color:#94a3b8;">High-Resolution (2s) Tracking Enabled.</p>
+            <div id="playlist" class="playlist"></div>
+        </div>
+
+        <div class="card">
+            <h3>Mission Control</h3>
+            
+            <div id="radarContainer">
+                <canvas id="radar"></canvas>
+                <span class="compass" style="top:5px; left:50%; transform:translate(-50%,0)">N</span>
+                <span class="compass" style="bottom:5px; left:50%; transform:translate(-50%,0)">S</span>
+                <span class="compass" style="top:50%; left:5px; transform:translate(0,-50%)">W</span>
+                <span class="compass" style="top:50%; right:5px; transform:translate(0,-50%)">E</span>
+            </div>
+
+            <div id="timerBox">
+                <div id="launchMsg">SYSTEM STANDBY</div>
+                <div id="mainTimer">--:--:--</div>
+                <div id="subTimer">Next: [Loading...]</div>
+            </div>
+
+            <div style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #334155;">
+                <h3>Robot Python Code</h3>
+                <p style="font-size:0.85em; color:#94a3b8;">
+                    <b>SETUP:</b> Point North. <b>LEFT:</b> Arm. <b>RIGHT:</b> Launch.
+                </p>
+                <textarea id="codeBox" readonly></textarea>
+                <button class="btn-copy" onclick="copyCode()">📋 Copy Code</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const now = new Date();
+    document.getElementById('startTime').value = now.toTimeString().substring(0,5);
+    const canvas = document.getElementById('radar');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 320; canvas.height = 320;
+    
+    let playlist = [];
+    let timerInterval = null;
+    let animationFrame = null;
+
+    // --- 1. LOCATION ---
+    function detectLoc() {
+        if(!navigator.geolocation) return alert("Browser needs permission.");
+        navigator.geolocation.getCurrentPosition(p => {
+            document.getElementById('lat').value = p.coords.latitude.toFixed(4);
+            document.getElementById('lon').value = p.coords.longitude.toFixed(4);
+        });
+    }
+
+    // --- 2. GENERATE PLAYLIST ---
+    async function generatePlaylist() {
+        const lat = parseFloat(document.getElementById('lat').value);
+        const lon = parseFloat(document.getElementById('lon').value);
+        if(isNaN(lat)) return alert("Set Location First.");
+
+        const status = document.getElementById('status');
+        status.innerText = "Downloading Orbit Data...";
+
+        try {
+            const res = await fetch('https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=tle');
+            const txt = await res.text();
+            const lines = txt.split('\n');
+            const sats = [];
+            let issSat = null;
+
+            for(let i=0; i<lines.length; i+=3) {
+                if(lines[i+1]?.startsWith('1')) {
+                    const name = lines[i].trim();
+                    const s = { name: name, rec: satellite.twoline2satrec(lines[i+1], lines[i+2]) };
+                    sats.push(s);
+                    if(name.includes("ZARYA") || name.includes("ISS")) issSat = s;
+                }
+            }
+
+            status.innerText = "Scanning Next 60 Minutes...";
+            
+            const timeParts = document.getElementById('startTime').value.split(':');
+            const startSearch = new Date();
+            startSearch.setHours(timeParts[0], timeParts[1], 0, 0);
+            
+            const obs = { latitude: satellite.degreesToRadians(lat), longitude: satellite.degreesToRadians(lon), height: 0.03 };
+            const found = [];
+
+            // Scan next 60 mins
+            for(let s of sats) {
+                let p = findNextPass(s, startSearch, 60, obs);
+                if(p && p.maxEl > 15) found.push(p);
+            }
+
+            // Look 3h ahead for ISS
+            if(issSat) {
+                let issPass = findNextPass(issSat, startSearch, 180, obs);
+                if(issPass && issPass.maxEl > 10) {
+                    const exists = found.find(f => f.name === issPass.name && Math.abs(f.start - issPass.start) < 60000);
+                    if(!exists) { issPass.isPriority = true; found.push(issPass); }
+                    else exists.isPriority = true;
+                }
+            }
+
+            found.sort((a,b) => b.maxEl - a.maxEl);
+            let finalSelection = found.slice(0, 10);
+            
+            const issInList = finalSelection.find(f => f.isPriority);
+            const issInData = found.find(f => f.isPriority);
+            if(issInData && !issInList) { finalSelection.pop(); finalSelection.push(issInData); }
+
+            finalSelection.sort((a,b) => a.start - b.start);
+            playlist = finalSelection;
+
+            if(playlist.length === 0) { status.innerText = "No visible passes found."; return; }
+
+            status.innerText = "Calculating Ultra-High Res Paths (2s)...";
+            // ULTRA HIGH RES: 2-second steps
+            playlist.forEach(m => {
+                m.path = calcPath(m, obs, 2); 
+                m.endTime = new Date(m.start.getTime() + (m.path.length * 2 * 1000));
+            });
+
+            status.innerText = "";
+            document.getElementById('mainUI').classList.remove('hidden');
+            
+            generateCode();
+            startLiveDashboard();
+
+        } catch(e) { status.innerText = "Error: " + e; console.error(e); }
+    }
+
+    function findNextPass(sat, startTime, durationMins, obs) {
+        let inPass=false, maxEl=0, startT=null;
+        for(let m=0; m<durationMins; m++) {
+            const t = new Date(startTime.getTime() + m*60000);
+            const gmst = satellite.gstime(t);
+            const pv = satellite.propagate(sat.rec, t);
+            if(!pv.position) continue;
+            
+            const look = satellite.ecfToLookAngles(obs, satellite.eciToEcf(pv.position, gmst));
+            const el = satellite.radiansToDegrees(look.elevation);
+
+            if(el > 10) {
+                if(!inPass) { inPass=true; startT=t; maxEl=0; }
+                if(el > maxEl) maxEl=el;
+            } else {
+                if(inPass) return { name: sat.name, start: startT, maxEl: maxEl, rec: sat.rec };
+            }
+        }
+        return null;
+    }
+
+    function calcPath(m, obs, stepSec) {
+        const path = [];
+        const startT = m.start.getTime();
+        // 15 mins max duration
+        const maxSteps = (15 * 60) / stepSec; 
+        
+        for(let s=0; s<maxSteps; s++) { 
+            const offsetMs = s * stepSec * 1000;
+            const t = new Date(startT + offsetMs);
+            const gmst = satellite.gstime(t);
+            const pv = satellite.propagate(m.rec, t);
+            if(!pv.position) continue;
+            
+            const look = satellite.ecfToLookAngles(obs, satellite.eciToEcf(pv.position, gmst));
+            const el = satellite.radiansToDegrees(look.elevation);
+            const az = satellite.radiansToDegrees(look.azimuth);
+            
+            if(el < 0) break;
+            path.push({ t:s*stepSec, az:az, el:el });
+        }
+        return path;
+    }
+
+    // --- LIVE DASHBOARD ---
+    function startLiveDashboard() {
+        if(timerInterval) clearInterval(timerInterval);
+        if(animationFrame) cancelAnimationFrame(animationFrame);
+        
+        renderPlaylistDOM();
+
+        // Update loop
+        const update = () => {
+            const now = new Date();
+            
+            // Filter out completed missions
+            const activeMissions = playlist.filter(m => m.endTime > now);
+            
+            // Re-render list if count changed (mission finished)
+            const domList = document.getElementById('playlist');
+            if(domList.children.length !== activeMissions.length) {
+                renderPlaylistDOM(activeMissions);
+            }
+
+            if(activeMissions.length === 0) {
+                document.getElementById('launchMsg').innerText = "ALL MISSIONS COMPLETE";
+                document.getElementById('mainTimer').innerText = "00:00:00";
+                drawRadar(null, null);
+                return;
+            }
+
+            const current = activeMissions[0];
+            const diff = current.start - now;
+            let currentPos = null;
+
+            if(diff > 0) {
+                // COUNTDOWN
+                const h = Math.floor(diff/3600000).toString().padStart(2,'0');
+                const m = Math.floor((diff%3600000)/60000).toString().padStart(2,'0');
+                const s = Math.floor((diff%60000)/1000).toString().padStart(2,'0');
+                document.getElementById('launchMsg').innerText = `NEXT: ${current.name}`;
+                document.getElementById('launchMsg').style.color = "#94a3b8";
+                document.getElementById('mainTimer').innerText = `T-MINUS ${h}:${m}:${s}`;
+                document.getElementById('mainTimer').style.color = "#22c55e";
+                
+                // Show start point on radar
+                if(current.path.length > 0) currentPos = current.path[0];
+            } else {
+                // TRACKING
+                document.getElementById('launchMsg').innerText = `TRACKING ACTIVE: ${current.name}`;
+                document.getElementById('launchMsg').style.color = "#f59e0b";
+                document.getElementById('mainTimer').innerText = "IN PROGRESS";
+                document.getElementById('mainTimer').style.color = "#f59e0b";
+                
+                // Calculate current live position for radar
+                const elapsedSec = Math.abs(diff) / 1000;
+                // Find point in path closest to elapsed time. Step is 2s.
+                const idx = Math.floor(elapsedSec / 2);
+                if(idx < current.path.length) currentPos = current.path[idx];
+                
+                // Highlight active item
+                const items = document.querySelectorAll('.playlist-item');
+                if(items.length > 0) items[0].classList.add('active-mission');
+            }
+            
+            document.getElementById('subTimer').innerText = `Start: ${current.start.toLocaleTimeString()}`;
+            
+            // Animate Radar
+            drawRadar(current.path, currentPos);
+            
+            animationFrame = requestAnimationFrame(update);
+        };
+        update();
+    }
+
+    function renderPlaylistDOM(list = playlist) {
+        const div = document.getElementById('playlist');
+        div.innerHTML = "";
+        list.forEach((m, i) => {
+            const el = document.createElement('div');
+            el.className = 'playlist-item' + (m.isPriority ? ' iss' : '');
+            el.innerHTML = `
+                <div class="slot-badge">${i+1}</div>
+                <div class="sat-info">
+                    <div>${m.name} ${m.isPriority ? '⭐' : ''}</div>
+                    <div>${m.start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+                </div>
+                <div class="sat-el">${m.maxEl.toFixed(0)}°</div>
+            `;
+            div.appendChild(el);
+        });
+    }
+
+    function drawRadar(path, currentPos) {
+        ctx.fillStyle = "#000"; ctx.fillRect(0,0,320,320);
+        const cx=160, cy=160, r=140;
+        
+        // Grid
+        ctx.strokeStyle = "#334155"; ctx.lineWidth=1;
+        [1, 0.66, 0.33].forEach(s => { ctx.beginPath(); ctx.arc(cx,cy,r*s,0,Math.PI*2); ctx.stroke(); });
+        ctx.beginPath(); ctx.moveTo(cx,0); ctx.lineTo(cx,320); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,cy); ctx.lineTo(320,cy); ctx.stroke();
+
+        if(!path) return;
+
+        // Draw Full Path
+        ctx.beginPath();
+        ctx.strokeStyle = "#22c55e"; ctx.lineWidth=2;
+        let first = true;
+        path.forEach(pt => {
+            const dist = r * (1 - (pt.el/90));
+            const rad = (pt.az - 90) * (Math.PI/180);
+            const x = cx + dist * Math.cos(rad);
+            const y = cy + dist * Math.sin(rad);
+            if(first) { ctx.moveTo(x,y); first=false; } else ctx.lineTo(x,y);
+        });
+        ctx.stroke();
+
+        // Draw Moving Satellite Target
+        if(currentPos) {
+            const d = r * (1 - (currentPos.el/90));
+            const ra = (currentPos.az - 90) * (Math.PI/180);
+            const tx = cx + d*Math.cos(ra);
+            const ty = cy + d*Math.sin(ra);
+            
+            // Glow
+            const grad = ctx.createRadialGradient(tx, ty, 2, tx, ty, 10);
+            grad.addColorStop(0, "#ef4444");
+            grad.addColorStop(1, "rgba(239, 68, 68, 0)");
+            ctx.fillStyle = grad;
+            ctx.beginPath(); ctx.arc(tx, ty, 10, 0, Math.PI*2); ctx.fill();
+            
+            // Core
+            ctx.fillStyle = "#fff";
+            ctx.beginPath(); ctx.arc(tx, ty, 3, 0, Math.PI*2); ctx.fill();
+        }
+    }
+
+    function generateCode() {
+        let py = "playlist = [\n";
+        playlist.forEach(m => {
+            let pts = "";
+            m.path.forEach(pt => {
+                let az = pt.az > 180 ? pt.az - 360 : pt.az; // Convert 0-360 to -180-180
+                let el = -pt.el; // NEGATIVE ELEVATION (PITCH REVERSED)
+                pts += `(${pt.t},${az.toFixed(1)},${el.toFixed(1)}),`;
+            });
+            const offsetSec = Math.floor((m.start - playlist[0].start) / 1000);
+            py += `    {"name":"${m.name}", "start_sec":${offsetSec}, "path":[${pts}]},\n`;
+        });
+        py += "]\n";
+        
+        const template = `from pybricks.hubs import InventorHub
 from pybricks.pupdevices import Motor
 from pybricks.parameters import Port, Direction, Color, Button
 from pybricks.tools import wait, StopWatch
@@ -7,34 +400,21 @@ hub = InventorHub()
 az = Motor(Port.A, Direction.CLOCKWISE)
 el = Motor(Port.B, Direction.COUNTERCLOCKWISE)
 
-# --- PLACEHOLDER FOR GENERATED MISSIONS ---
-# The web app will generate the full list here.
-# For now, this is a blank template to prove it works.
-missions = [] 
+${py}
 
 # 1. ARM (LEFT)
 hub.light.on(Color.BLUE)
 print("READY. PRESS LEFT TO ARM.")
-
-# Wait for LEFT Button (Arm)
 while Button.LEFT not in hub.buttons.pressed(): wait(10)
 while Button.LEFT in hub.buttons.pressed(): wait(10)
 
-# If no missions are loaded yet (just testing), wiggle to show life
-if len(missions) == 0:
-    hub.light.on(Color.ORANGE)
-    print("NO MISSIONS LOADED. USE WEB APP TO GENERATE CODE.")
-    az.run_target(500, 10)
-    az.run_target(500, 0)
-    wait(1000)
-else:
-    # Move to Mission 1 Start
-    hub.light.on(Color.ORANGE)
-    m1 = playlist[0]
-    print("MOVING TO START: " + m1["name"])
-    start_pt = m1["path"][0]
-    az.run_target(500, start_pt[1], wait=False)
-    el.run_target(500, start_pt[2], wait=True)
+# Move to Mission 1 Start
+hub.light.on(Color.ORANGE)
+m1 = playlist[0]
+print("MOVING TO START: " + m1["name"])
+start_pt = m1["path"][0]
+az.run_target(500, start_pt[1], wait=False)
+el.run_target(500, start_pt[2], wait=True)
 
 # 2. WAIT FOR LAUNCH (RIGHT)
 hub.light.blink(Color.ORANGE, [200, 200])
@@ -46,12 +426,11 @@ hub.light.on(Color.GREEN)
 master_clock = StopWatch()
 master_clock.reset()
 
-# This loop only runs if you pasted the code from the Web App
-for i, mission in enumerate(missions):
+for i, mission in enumerate(playlist):
     print("RUNNING: " + mission["name"])
     hub.light.on(Color.GREEN)
     
-    # Show Mission Number on Matrix
+    # SHOW MISSION NUMBER ON MATRIX
     hub.display.number(i + 1)
     
     target_start = mission["start_sec"] * 1000
@@ -74,7 +453,19 @@ for i, mission in enumerate(missions):
         el.track_target(pt[2])
 
 hub.light.blink(Color.GREEN, [500, 500])
-print("ALL MISSIONS DONE")
+print("ALL MISSIONS DONE")`;
+
+        document.getElementById('codeBox').value = template;
+    }
+
+    function copyCode() {
+        document.getElementById('codeBox').select();
+        document.execCommand('copy');
+    }
+</script>
+</body>
+</html>
+
 
 
 
