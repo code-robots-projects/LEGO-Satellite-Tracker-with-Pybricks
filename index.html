@@ -1,63 +1,158 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <title>LEGO Satellite Commander</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/4.1.3/satellite.min.js"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; padding: 20px; background: #eee; }
-        button { padding: 20px 40px; font-size: 20px; cursor: pointer; margin: 10px; border-radius: 10px; border: none; }
-        .connect { background: #06b6d4; color: white; }
-        .test { background: #3498db; color: white; }
-        .stop { background: #e74c3c; color: white; }
-        #log { font-family: monospace; color: #333; margin-top: 20px; }
+        body { background-color: #111; color: #eee; font-family: sans-serif; text-align: center; padding: 20px; }
+        .box { background: #222; padding: 20px; border-radius: 10px; margin: 20px auto; max-width: 500px; border: 1px solid #444; }
+        
+        button { padding: 15px; font-size: 16px; border-radius: 5px; border: none; cursor: pointer; width: 100%; margin-top: 10px; color: white; font-weight: bold; }
+        .btn-cyan { background: #06b6d4; color: black; }
+        .btn-green { background: #2ecc71; color: black; }
+        .btn-blue { background: #3498db; }
+        .btn-red { background: #e74c3c; }
+
+        .status { color: #f1c40f; font-size: 1.2em; margin: 10px 0; font-family: monospace; }
+        #log { font-family: monospace; font-size: 0.8em; color: #555; margin-top: 5px; }
     </style>
 </head>
 <body>
 
-    <h1>🔌 USB Protocol Fix</h1>
-    <p>1. Start Robot (Cyan Light).<br>2. Plug into THIS computer.</p>
+    <div class="box">
+        <h2>1. Connection Sequence</h2>
+        <p>Step A: Plug in USB & Start Robot (Red Light).</p>
+        <button id="btnCon" class="btn-cyan" onclick="connectUSB()">Step B: Connect USB</button>
+        <button id="btnInit" class="btn-green" onclick="sendHandshake()" disabled>Step C: INITIALIZE ROBOT (Wake Up)</button>
+    </div>
 
-    <button id="btnCon" class="connect" onclick="connect()">1. Connect USB</button>
-    <br><br>
-    <button class="test" onclick="send('90,45')">Test: Spin & Tilt</button>
-    <button class="stop" onclick="send('0,0')">Reset (0,0)</button>
-
-    <div id="log">Disconnected</div>
+    <div class="box">
+        <h2>2. Mission Control</h2>
+        <button class="btn-blue" onclick="getLocation()">📍 Get Location</button>
+        <button class="btn-blue" onclick="getData()">📥 Get Sat Data</button>
+        <br><br>
+        <button id="trackBtn" class="btn-blue" onclick="toggleTrack()" disabled>START TRACKING</button>
+        
+        <div class="status">
+            Target: <span id="satName">IDLE</span><br>
+            <span id="vals">Az: 0.0 | El: 0.0</span>
+        </div>
+        <div id="log">Disconnected</div>
+    </div>
 
     <script>
         let port, writer;
+        let satellites = [];
+        let running = false;
+        let currentSat = "";
 
-        async function connect() {
+        // --- 1. USB CONNECT ---
+        async function connectUSB() {
             if ("serial" in navigator) {
                 try {
-                    // Request Port
                     port = await navigator.serial.requestPort();
-                    
-                    // Open with standard Pybricks settings
                     await port.open({ baudRate: 115200 });
                     
                     const encoder = new TextEncoderStream();
                     encoder.readable.pipeTo(port.writable);
                     writer = encoder.writable.getWriter();
 
-                    document.getElementById('log').innerText = "CONNECTED! Ready to send.";
-                    document.getElementById('btnCon').disabled = true;
                     document.getElementById('btnCon').innerText = "USB Active";
-                } catch(e) {
-                    document.getElementById('log').innerText = "Error: " + e;
-                }
-            } else {
-                alert("Please use Chrome or Edge.");
-            }
+                    document.getElementById('btnCon').disabled = true;
+                    document.getElementById('btnInit').disabled = false;
+                    document.getElementById('log').innerText = "USB Linked. Click Initialize.";
+                } catch(e) { alert("USB Error: " + e); }
+            } else { alert("Use Chrome/Edge."); }
         }
 
-        async function send(msg) {
-            if(!writer) return alert("Not Connected");
-            
-            // THE FIX: Send both Carriage Return (\r) and New Line (\n)
-            const data = msg + "\r\n";
-            
-            await writer.write(data);
-            document.getElementById('log').innerText = "Sent: " + msg;
+        // --- 2. HANDSHAKE ---
+        async function sendHandshake() {
+            if(!writer) return;
+            // Send the magic word "GO"
+            await writer.write("GO\r\n");
+            document.getElementById('btnInit').innerText = "Robot Initialized";
+            document.getElementById('btnInit').disabled = true;
+            document.getElementById('trackBtn').disabled = false;
+            document.getElementById('log').innerText = "Robot Awake (Green Light). Ready.";
+        }
+
+        // --- 3. TRACKING ---
+        function getLocation() {
+            navigator.geolocation.getCurrentPosition(p => {
+                window.lat = p.coords.latitude;
+                window.lon = p.coords.longitude;
+                document.getElementById('log').innerText = "Location Set.";
+            });
+        }
+
+        async function getData() {
+            const res = await fetch('https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=tle');
+            const txt = await res.text();
+            const lines = txt.split('\n');
+            satellites = [];
+            for(let i=0; i<lines.length; i+=3) {
+                if(lines[i+1]?.startsWith('1')) satellites.push({
+                    name: lines[i].trim(),
+                    rec: satellite.twoline2satrec(lines[i+1], lines[i+2])
+                });
+            }
+            document.getElementById('log').innerText = `${satellites.length} Sats Loaded.`;
+        }
+
+        function toggleTrack() {
+            running = !running;
+            document.getElementById('trackBtn').innerText = running ? "STOP TRACKING" : "START TRACKING";
+            document.getElementById('trackBtn').className = running ? "btn-red" : "btn-blue";
+            if(running) loop();
+            else send(0,0);
+        }
+
+        function loop() {
+            if(!running) return;
+            if(!window.lat || satellites.length === 0) { alert("Need Location & Data!"); toggleTrack(); return; }
+
+            const obs = { latitude: satellite.degreesToRadians(window.lat), longitude: satellite.degreesToRadians(window.lon), height: 0.03 };
+            const now = new Date();
+            const gmst = satellite.gstime(now);
+
+            let best = null, maxEl = 0, bestAz = 0;
+
+            for(let s of satellites) {
+                const pv = satellite.propagate(s.rec, now);
+                if(!pv.position) continue;
+                const look = satellite.ecfToLookAngles(obs, satellite.eciToEcf(pv.position, gmst));
+                const el = satellite.radiansToDegrees(look.elevation);
+                const az = satellite.radiansToDegrees(look.azimuth);
+
+                if(el > 10 && el > maxEl) {
+                    maxEl = el;
+                    bestAz = az;
+                    best = s.name;
+                }
+            }
+
+            if(best) {
+                document.getElementById('satName').innerText = best;
+                document.getElementById('vals').innerText = `Az: ${bestAz.toFixed(1)} | El: ${maxEl.toFixed(1)}`;
+                
+                // Convert 0-360 to -180/180
+                let robotAz = bestAz;
+                if(robotAz > 180) robotAz -= 360;
+                send(robotAz, maxEl);
+            } else {
+                document.getElementById('satName').innerText = "Scanning...";
+                send(0,0);
+            }
+            setTimeout(loop, 500);
+        }
+
+        async function send(az, el) {
+            if(!writer) return;
+            const cmd = `${az.toFixed(1)},${el.toFixed(1)}\r\n`;
+            try { await writer.write(cmd); } catch(e){}
         }
     </script>
 </body>
 </html>
+
