@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { background: #111; color: #0f0; font-family: monospace; padding: 20px; }
+        #output { width: 100%; height: 300px; background: #000; border: 1px solid #444; overflow-y: scroll; white-space: pre-wrap; padding: 10px; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; margin-top: 10px; }
+        input { padding: 10px; font-size: 16px; width: 300px; }
+    </style>
+</head>
+<body>
+
+    <h1>💻 Raw USB Terminal</h1>
+    <div id="output">Waiting for connection...</div>
+    
+    <br>
+    <button onclick="connect()">CONNECT USB</button>
+    <br><br>
+    <input type="text" id="cmd" placeholder="Type command (e.g. 90,0)">
+    <button onclick="send()">SEND</button>
+
+    <script>
+        let port, reader, writer;
+
+        async function connect() {
+            try {
+                port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 115200 });
+                
+                // Setup Reader (To see what Robot says)
+                const decoder = new TextDecoderStream();
+                port.readable.pipeTo(decoder.writable);
+                const inputStream = decoder.readable;
+                reader = inputStream.getReader();
+                
+                // Setup Writer (To send to Robot)
+                const encoder = new TextEncoderStream();
+                const writableStreamClosed = encoder.readable.pipeTo(port.writable);
+                writer = encoder.writable.getWriter();
+
+                document.getElementById('output').innerText += "\nCONNECTED.\n";
+                readLoop();
+                
+            } catch(e) {
+                document.getElementById('output').innerText += "\nError: " + e + "\n";
+            }
+        }
+
+        async function readLoop() {
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                if (value) {
+                    document.getElementById('output').innerText += value;
+                    // Auto-scroll
+                    const out = document.getElementById('output');
+                    out.scrollTop = out.scrollHeight;
+                }
+            }
+        }
+
+        async function send() {
+            const text = document.getElementById('cmd').value;
+            // Send with Carriage Return + New Line
+            await writer.write(text + "\r\n"); 
+        }
+    </script>
+</body>
+</html>
