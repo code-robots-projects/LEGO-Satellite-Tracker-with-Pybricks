@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 50px; background: #eee; }
+        button { padding: 20px 40px; font-size: 20px; cursor: pointer; margin: 10px; border-radius: 10px; border: none; }
+        .connect { background: #2ecc71; color: white; }
+        .test { background: #3498db; color: white; }
+        .stop { background: #e74c3c; color: white; }
+    </style>
+</head>
+<body>
+
+    <h1>🚨 Connection Debugger</h1>
+    <p>1. Disconnect Pybricks App.<br>2. Connect here.<br>3. Watch the Hub Light.</p>
+
+    <button class="connect" onclick="connect()">1. Connect Bluetooth</button>
+    <br><br>
+    <button class="test" onclick="send('90,0')">Test A: Spin 90°</button>
+    <button class="test" onclick="send('0,90')">Test B: Tilt 90°</button>
+    <button class="stop" onclick="send('0,0')">Reset (0,0)</button>
+
+    <p id="status">Disconnected</p>
+
+    <script>
+        const SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+        const WRITE   = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+        let char = null;
+
+        async function connect() {
+            try {
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ namePrefix: 'Pybricks' }, { namePrefix: 'Robot' }],
+                    optionalServices: [SERVICE]
+                });
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService(SERVICE);
+                char = await service.getCharacteristic(WRITE);
+                document.getElementById('status').innerText = "CONNECTED! Now click Test.";
+            } catch(e) {
+                alert("Error: " + e);
+            }
+        }
+
+        async function send(msg) {
+            if(!char) return alert("Not Connected");
+            // We append \n to signify end of command
+            const data = msg + "\n";
+            await char.writeValue(new TextEncoder().encode(data));
+        }
+    </script>
+</body>
+</html>
