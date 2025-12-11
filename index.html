@@ -2,157 +2,282 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>LEGO Satellite Commander</title>
+    <title>LEGO Mission Commander</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/4.1.3/satellite.min.js"></script>
     <style>
-        body { background-color: #111; color: #eee; font-family: sans-serif; text-align: center; padding: 20px; }
-        .box { background: #222; padding: 20px; border-radius: 10px; margin: 20px auto; max-width: 500px; border: 1px solid #444; }
+        :root { --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --accent: #3b82f6; --success: #22c55e; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 20px; margin: 0; }
+        .container { max-width: 1100px; margin: 0 auto; }
         
-        button { padding: 15px; font-size: 16px; border-radius: 5px; border: none; cursor: pointer; width: 100%; margin-top: 10px; color: white; font-weight: bold; }
-        .btn-cyan { background: #06b6d4; color: black; }
-        .btn-green { background: #2ecc71; color: black; }
-        .btn-blue { background: #3498db; }
-        .btn-red { background: #e74c3c; }
+        /* Layout Grid */
+        .dashboard { display: grid; grid-template-columns: 350px 1fr; gap: 20px; margin-top: 20px; }
+        @media (max-width: 800px) { .dashboard { grid-template-columns: 1fr; } }
 
-        .status { color: #f1c40f; font-size: 1.2em; margin: 10px 0; font-family: monospace; }
-        #log { font-family: monospace; font-size: 0.8em; color: #555; margin-top: 5px; }
+        /* Cards */
+        .card { background: var(--card); border-radius: 12px; padding: 20px; border: 1px solid #334155; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        h1 { color: #60a5fa; margin: 0 0 20px 0; text-align: center; text-transform: uppercase; letter-spacing: 2px; }
+        h3 { border-bottom: 1px solid #475569; padding-bottom: 10px; margin-top: 0; color: #94a3b8; }
+
+        /* Inputs & Buttons */
+        input { background: #334155; border: 1px solid #475569; color: white; padding: 8px; border-radius: 6px; width: 100px; text-align: center; }
+        button { padding: 10px; border: none; cursor: pointer; border-radius: 6px; font-weight: bold; width: 100%; margin-top: 5px; color: white; transition: 0.2s; }
+        .btn-blue { background: var(--accent); } .btn-blue:hover { background: #2563eb; }
+        .btn-green { background: var(--success); } .btn-green:hover { background: #16a34a; }
+
+        /* Pass List */
+        .pass-list { height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+        .pass-item { background: #0f172a; padding: 12px; border-radius: 8px; cursor: pointer; border: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; transition: 0.2s; }
+        .pass-item:hover { border-color: var(--accent); background: #1e293b; }
+        .pass-item.active { border-color: var(--success); background: #064e3b; }
+        .sat-name { font-weight: bold; display: block; }
+        .sat-time { font-size: 0.9em; color: #94a3b8; }
+        .sat-el { font-weight: bold; color: #fbbf24; }
+
+        /* Visualizer */
+        #radarContainer { position: relative; width: 100%; aspect-ratio: 1; background: #000; border-radius: 50%; border: 2px solid #475569; margin: 0 auto; max-width: 400px; }
+        canvas { width: 100%; height: 100%; border-radius: 50%; }
+        .radar-label { position: absolute; color: #64748b; font-size: 0.8em; font-weight: bold; }
+        
+        /* Timer */
+        #countdownBox { text-align: center; background: #000; padding: 15px; border-radius: 8px; margin-top: 20px; border: 1px solid #333; }
+        #timer { font-family: monospace; font-size: 2.5em; color: var(--success); display: block; }
+        #launchInfo { color: #94a3b8; font-size: 0.9em; margin-top: 5px; }
+
+        textarea { width: 100%; height: 200px; background: #0f172a; color: #a5f3fc; font-family: monospace; padding: 10px; border-radius: 8px; border: 1px solid #334155; margin-top: 10px; }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
 
-    <div class="box">
-        <h2>1. Connection Sequence</h2>
-        <p>Step A: Plug in USB & Start Robot (Red Light).</p>
-        <button id="btnCon" class="btn-cyan" onclick="connectUSB()">Step B: Connect USB</button>
-        <button id="btnInit" class="btn-green" onclick="sendHandshake()" disabled>Step C: INITIALIZE ROBOT (Wake Up)</button>
-    </div>
+<div class="container">
+    <h1>🛰️ LEGO Mission Commander</h1>
 
-    <div class="box">
-        <h2>2. Mission Control</h2>
-        <button class="btn-blue" onclick="getLocation()">📍 Get Location</button>
-        <button class="btn-blue" onclick="getData()">📥 Get Sat Data</button>
-        <br><br>
-        <button id="trackBtn" class="btn-blue" onclick="toggleTrack()" disabled>START TRACKING</button>
-        
-        <div class="status">
-            Target: <span id="satName">IDLE</span><br>
-            <span id="vals">Az: 0.0 | El: 0.0</span>
+    <div class="card" style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center; justify-content: center;">
+        <div>
+            <label style="color:#94a3b8; font-size:0.9em;">LATITUDE</label><br>
+            <input type="number" id="lat" placeholder="0.00" step="0.0001">
         </div>
-        <div id="log">Disconnected</div>
+        <div>
+            <label style="color:#94a3b8; font-size:0.9em;">LONGITUDE</label><br>
+            <input type="number" id="lon" placeholder="0.00" step="0.0001">
+        </div>
+        <div style="flex-grow: 1; max-width: 150px;">
+             <button class="btn-blue" onclick="detectLoc()">📍 Detect</button>
+        </div>
+        <div>
+            <label style="color:#94a3b8; font-size:0.9em;">SEARCH FROM</label><br>
+            <input type="time" id="startTime">
+        </div>
+        <div style="flex-grow: 1; max-width: 200px;">
+            <button class="btn-green" onclick="generatePack()">🚀 Scan Sky & Build</button>
+        </div>
     </div>
+    <div id="status" style="text-align: center; color: #fbbf24; margin-top: 10px; font-weight: bold;"></div>
 
-    <script>
-        let port, writer;
-        let satellites = [];
-        let running = false;
-        let currentSat = "";
+    <div id="mainDash" class="dashboard hidden">
+        
+        <div class="card">
+            <h3>Available Missions (Next 12h)</h3>
+            <p style="font-size:0.8em; color:#64748b; margin-bottom:10px;">Select a pass to visualize it.</p>
+            <div id="passList" class="pass-list"></div>
+        </div>
 
-        // --- 1. USB CONNECT ---
-        async function connectUSB() {
-            if ("serial" in navigator) {
-                try {
-                    port = await navigator.serial.requestPort();
-                    await port.open({ baudRate: 115200 });
-                    
-                    const encoder = new TextEncoderStream();
-                    encoder.readable.pipeTo(port.writable);
-                    writer = encoder.writable.getWriter();
+        <div class="card">
+            <h3>Mission Trajectory & Launch Control</h3>
+            
+            <div id="radarContainer">
+                <canvas id="skyCanvas"></canvas>
+                <span class="radar-label" style="top:5px; left:50%; transform:translateX(-50%);">N</span>
+                <span class="radar-label" style="bottom:5px; left:50%; transform:translateX(-50%);">S</span>
+                <span class="radar-label" style="top:50%; left:5px; transform:translateY(-50%);">W</span>
+                <span class="radar-label" style="top:50%; right:5px; transform:translateY(-50%);">E</span>
+            </div>
 
-                    document.getElementById('btnCon').innerText = "USB Active";
-                    document.getElementById('btnCon').disabled = true;
-                    document.getElementById('btnInit').disabled = false;
-                    document.getElementById('log').innerText = "USB Linked. Click Initialize.";
-                } catch(e) { alert("USB Error: " + e); }
-            } else { alert("Use Chrome/Edge."); }
-        }
+            <div id="countdownBox">
+                <span id="launchInfo">SELECT A MISSION</span>
+                <span id="timer">--:--:--</span>
+                <div style="color: #64748b; font-size: 0.8em; margin-top:5px;">
+                    When timer hits 00:00:00, press Robot Center Button.
+                </div>
+            </div>
 
-        // --- 2. HANDSHAKE ---
-        async function sendHandshake() {
-            if(!writer) return;
-            // Send the magic word "GO"
-            await writer.write("GO\r\n");
-            document.getElementById('btnInit').innerText = "Robot Initialized";
-            document.getElementById('btnInit').disabled = true;
-            document.getElementById('trackBtn').disabled = false;
-            document.getElementById('log').innerText = "Robot Awake (Green Light). Ready.";
-        }
+            <div style="margin-top: 20px; border-top: 1px solid #333; padding-top: 10px;">
+                <h4 style="margin:0; color:#94a3b8;">Robot Mission Code</h4>
+                <p style="font-size:0.8em; color:#64748b;">Copy this once. It contains ALL missions below.</p>
+                <textarea id="codeBox" readonly></textarea>
+                <button class="btn-blue" onclick="copyCode()">📋 Copy Code</button>
+            </div>
+        </div>
+    </div>
+</div>
 
-        // --- 3. TRACKING ---
-        function getLocation() {
-            navigator.geolocation.getCurrentPosition(p => {
-                window.lat = p.coords.latitude;
-                window.lon = p.coords.longitude;
-                document.getElementById('log').innerText = "Location Set.";
-            });
-        }
+<script>
+    // --- INIT ---
+    const now = new Date();
+    document.getElementById('startTime').value = now.toTimeString().substring(0,5);
+    const canvas = document.getElementById('skyCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Resize Canvas Resolution
+    canvas.width = 400; 
+    canvas.height = 400;
 
-        async function getData() {
+    let missions = []; // Stores the computed mission data
+    let countdownInterval = null;
+
+    // --- 1. LOCATION ---
+    function detectLoc() {
+        if(!navigator.geolocation) return alert("Browser does not support geolocation");
+        navigator.geolocation.getCurrentPosition(p => {
+            document.getElementById('lat').value = p.coords.latitude.toFixed(4);
+            document.getElementById('lon').value = p.coords.longitude.toFixed(4);
+        });
+    }
+
+    // --- 2. GENERATOR CORE ---
+    async function generatePack() {
+        const lat = parseFloat(document.getElementById('lat').value);
+        const lon = parseFloat(document.getElementById('lon').value);
+        if(isNaN(lat)) return alert("Set Location First!");
+
+        const status = document.getElementById('status');
+        status.innerText = "Downloading Orbit Data...";
+
+        try {
+            // Fetch TLE
             const res = await fetch('https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=tle');
             const txt = await res.text();
             const lines = txt.split('\n');
-            satellites = [];
+            const sats = [];
             for(let i=0; i<lines.length; i+=3) {
-                if(lines[i+1]?.startsWith('1')) satellites.push({
-                    name: lines[i].trim(),
-                    rec: satellite.twoline2satrec(lines[i+1], lines[i+2])
-                });
+                if(lines[i+1]?.startsWith('1')) sats.push({ name: lines[i].trim(), rec: satellite.twoline2satrec(lines[i+1], lines[i+2]) });
             }
-            document.getElementById('log').innerText = `${satellites.length} Sats Loaded.`;
-        }
 
-        function toggleTrack() {
-            running = !running;
-            document.getElementById('trackBtn').innerText = running ? "STOP TRACKING" : "START TRACKING";
-            document.getElementById('trackBtn').className = running ? "btn-red" : "btn-blue";
-            if(running) loop();
-            else send(0,0);
-        }
+            status.innerText = "Simulating Orbits...";
+            
+            // Setup Search Time
+            const timeInput = document.getElementById('startTime').value.split(':');
+            const startSearch = new Date();
+            startSearch.setHours(timeInput[0], timeInput[1], 0, 0);
 
-        function loop() {
-            if(!running) return;
-            if(!window.lat || satellites.length === 0) { alert("Need Location & Data!"); toggleTrack(); return; }
+            const obs = { latitude: satellite.degreesToRadians(lat), longitude: satellite.degreesToRadians(lon), height: 0.03 };
+            const foundPasses = [];
 
-            const obs = { latitude: satellite.degreesToRadians(window.lat), longitude: satellite.degreesToRadians(window.lon), height: 0.03 };
-            const now = new Date();
-            const gmst = satellite.gstime(now);
+            // Scan next 12h
+            for(let s of sats) {
+                let inPass = false, maxEl = 0, startT = null;
+                // Check every minute (low res scan)
+                for(let m=0; m<720; m++) {
+                    const t = new Date(startSearch.getTime() + m*60000);
+                    const gmst = satellite.gstime(t);
+                    const pv = satellite.propagate(s.rec, t);
+                    if(!pv.position) continue;
+                    
+                    const look = satellite.ecfToLookAngles(obs, satellite.eciToEcf(pv.position, gmst));
+                    const el = satellite.radiansToDegrees(look.elevation);
 
-            let best = null, maxEl = 0, bestAz = 0;
-
-            for(let s of satellites) {
-                const pv = satellite.propagate(s.rec, now);
-                if(!pv.position) continue;
-                const look = satellite.ecfToLookAngles(obs, satellite.eciToEcf(pv.position, gmst));
-                const el = satellite.radiansToDegrees(look.elevation);
-                const az = satellite.radiansToDegrees(look.azimuth);
-
-                if(el > 10 && el > maxEl) {
-                    maxEl = el;
-                    bestAz = az;
-                    best = s.name;
+                    if(el > 10) {
+                        if(!inPass) { inPass = true; startT = t; maxEl = 0; }
+                        if(el > maxEl) maxEl = el;
+                    } else {
+                        if(inPass) {
+                            inPass = false;
+                            if(maxEl > 25) { // Only bright passes
+                                foundPasses.push({ name: s.name, start: startT, maxEl: maxEl, rec: s.rec });
+                            }
+                        }
+                    }
                 }
             }
 
-            if(best) {
-                document.getElementById('satName').innerText = best;
-                document.getElementById('vals').innerText = `Az: ${bestAz.toFixed(1)} | El: ${maxEl.toFixed(1)}`;
-                
-                // Convert 0-360 to -180/180
-                let robotAz = bestAz;
-                if(robotAz > 180) robotAz -= 360;
-                send(robotAz, maxEl);
-            } else {
-                document.getElementById('satName').innerText = "Scanning...";
-                send(0,0);
-            }
-            setTimeout(loop, 500);
-        }
+            // Sort & Pick Top 10
+            foundPasses.sort((a,b) => a.start - b.start);
+            missions = foundPasses.slice(0, 10);
 
-        async function send(az, el) {
-            if(!writer) return;
-            const cmd = `${az.toFixed(1)},${el.toFixed(1)}\r\n`;
-            try { await writer.write(cmd); } catch(e){}
+            if(missions.length === 0) { status.innerText = "No passes found."; return; }
+
+            // PRE-CALCULATE PATHS FOR ALL 10
+            status.innerText = "Calculating High-Res Paths...";
+            missions.forEach(m => {
+                m.path = calculatePath(m, obs); // returns array of {az, el}
+            });
+
+            // RENDER UI
+            status.innerText = "";
+            document.getElementById('mainDash').classList.remove('hidden');
+            renderList();
+            generatePythonCode(obs);
+            drawRadar([]); // Clear Radar
+
+        } catch(e) { status.innerText = "Error: " + e; }
+    }
+
+    function calculatePath(mission, obs) {
+        // Generate a point every 5 seconds for 15 mins max
+        const path = [];
+        const startTime = mission.start.getTime();
+        for(let s=0; s<900; s+=5) {
+            const t = new Date(startTime + s*1000);
+            const gmst = satellite.gstime(t);
+            const pv = satellite.propagate(mission.rec, t);
+            if(!pv.position) continue;
+            
+            const look = satellite.ecfToLookAngles(obs, satellite.eciToEcf(pv.position, gmst));
+            const el = satellite.radiansToDegrees(look.elevation);
+            const az = satellite.radiansToDegrees(look.azimuth);
+
+            if(el < 0) break;
+            
+            // We store standard Az (0-360) for Radar, convert for Robot later
+            path.push({ t: s, az: az, el: el });
         }
-    </script>
-</body>
-</html>
+        return path;
+    }
+
+    // --- 3. UI RENDERING ---
+    function renderList() {
+        const list = document.getElementById('passList');
+        list.innerHTML = "";
+        missions.forEach((m, i) => {
+            const item = document.createElement('div');
+            item.className = "pass-item";
+            item.onclick = () => selectMission(i);
+            item.innerHTML = `
+                <div>
+                    <span style="color:#3b82f6; font-weight:bold; margin-right:10px;">#${i}</span>
+                    <span class="sat-name">${m.name}</span>
+                    <span class="sat-time">Starts: ${m.start.toLocaleTimeString()}</span>
+                </div>
+                <div class="sat-el">Max ${m.maxEl.toFixed(0)}°</div>
+            `;
+            list.appendChild(item);
+        });
+    }
+
+    function selectMission(index) {
+        // Highlight List Item
+        const items = document.querySelectorAll('.pass-item');
+        items.forEach(el => el.classList.remove('active'));
+        items[index].classList.add('active');
+
+        const m = missions[index];
+        
+        // 1. Draw Radar Track
+        drawRadar(m.path);
+
+        // 2. Start Countdown
+        startTimer(m.start, m.name);
+    }
+
+    function drawRadar(path) {
+        // Clear
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0,0,400,400);
+        
+        // Draw Grid
+        const cx = 200, cy = 200, r = 180;
+        ctx.strokeStyle = "#334155"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke(); // 0 deg
+        ctx.beginPath(); ctx.arc(cx,cy,r*0.66,0,Math.PI*2); ctx.stroke(); // 3
+
 
