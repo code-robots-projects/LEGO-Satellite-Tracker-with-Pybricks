@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>LEGO Satellite Commander</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/4.1.3/satellite.min.js"></script>
+    
+    <style>
+        /* Making things look cool with colors and boxes */
+        body { background-color: #0f172a; color: white; font-family: sans-serif; text-align: center; }
+        .box { background: #1e293b; padding: 20px; border-radius: 15px; margin: 20px auto; max-width: 600px; border: 1px solid #334155; }
+        button { padding: 15px 30px; font-size: 18px; border-radius: 10px; border: none; cursor: pointer; margin: 5px; }
+        .green-btn { background-color: #22c55e; color: white; }
+        .blue-btn { background-color: #3b82f6; color: white; }
+        .red-btn { background-color: #ef4444; color: white; }
+        input { padding: 10px; border-radius: 5px; }
+        
+        /* The Radar Screen Circle */
+        #radar { background: black; border-radius: 50%; width: 300px; height: 300px; margin: 0 auto; border: 2px solid #64748b; position: relative; }
+        #dot { width: 15px; height: 15px; background: #00ff00; border-radius: 50%; position: absolute; display: none; box-shadow: 0 0 10px #00ff00; }
+        .crosshair { position: absolute; background: #334155; }
+    </style>
+</head>
+<body>
+
+    <h1>🛰️ Satellite Commander</h1>
+
+    <div class="box">
+        <h3>1. Where are we?</h3>
+        <p>Type your location or click the button:</p>
+        <input type="number" id="lat" placeholder="Latitude">
+        <input type="number" id="lon" placeholder="Longitude">
+        <button class="blue-btn" onclick="findMe()">📍 Find Me</button>
+        <br><br>
+        <button class="blue-btn" onclick="downloadSpaceData()">📥 Download Satellite Data</button>
+        <p id="status">Waiting...</p>
+    </div>
+
+    <div class="box">
+        <h3>2. Connect Robot</h3>
+        <p>Turn on the robot. Align it North. Press Center Button.</p>
+        <button class="green-btn" id="connectBtn" onclick="connectToRobot()">🔌 Connect Bluetooth</button>
+    </div>
+
+    <div class="box">
+        <h3>3. Mission Control</h3>
+        <h2 id="satName" style="color: #60a5fa;">SCANNING SKY...</h2>
+        <p>Spin: <span id="valAz">0</span>° | Tilt: <span id="valEl">0</span>°</p>
+        
+        <div id="radar">
+            <div class="crosshair" style="width: 100%; height: 1px; top: 50%;"></div>
+            <div class="crosshair" style="width: 1px; height: 100%; left: 50%;"></div>
+            <div id="dot"></div>
+        </div>
+        <br>
+        <button class="blue-btn" id="startBtn" onclick="toggleMission()" disabled>START TRACKING</button>
+        <p id="nextPassInfo" style="color: yellow;"></p>
+    </div>
+
+    <script>
+        // --- SETTINGS ---
+        // These are secret codes that let Chrome talk to the LEGO Hub
+        const SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+        const WRITE_UUID   = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+        
+        // Variables to remember things
+        let satellites = []; // List of all satellites
+        let robotDevice = null; // The Bluetooth connection
+        let robotChar = null; // The channel to send messages
+        let isTracking = false; // Are we tracking right now?
+        let currentSatName = ""; // Who are we looking at?
+
+        // --- 1. FIND LOCATION ---
+        function findMe() {
+            // Ask the browser for GPS location
+            navigator.geolocation.getCurrentPosition(pos => {
+                document.getElementById('lat').value = pos.coords.latitude.toFixed(4);
+                document.getElementById('lon').value = pos.coords.longitude.toFixed(4);
+                document.getElementById('status').innerText = "Location Found!";
+            });
+        }
+
+        // --- 2. DOWNLOAD DATA ---
+        async function downloadSpaceData() {
+            document.getElementById('status').innerText = "Downloading...";
+            // Go to the internet and get the TLE text file
+            const response = await fetch('https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=tle');
+            const text = await response.text();
+            const lines = text.split('\n');
+            
+            satellites = [];
+            // Read the file 3 lines at a time
+            for(let i=0; i<lines.length; i+=3){
+                if(lines[i+1]?.startsWith('1')){
+                    // Save the math data for each satellite
+                    satellites.push({
+                        name: lines[i].trim(),
+                        rec: satellite.twoline2satrec(lines[i+1], lines[i+2])
+                    });
+                }
+            }
+            document.getElementById('status').innerText = "Got " + satellites.length + " satellites!";
+            speak("Data downloaded. Ready to connect.");
+        }
+
+        // --- 3. CONNECT BLUETOOTH ---
+        async function connectToRobot() {
+            try {
+                // Open the Bluetooth scanning window
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ namePrefix: 'Pybricks' }, { namePrefix: 'Robot' }],
+                    optionalServices: [SERVICE_UUID]
+                });
+                
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService(SERVICE_UUID);
+                robotChar = await service.getCharacteristic(WRITE_UUID);
+                
+                document.getElementById('connectBtn').innerText = "Connected!";
+                document.getElementById('startBtn').disabled = false;
+                speak("Robot connected.");
+            } catch(error) {
+                alert("Connection failed: " + error);
+            }
+        }
+
+        // --- 4. THE TRACKING LOOP ---
+        function toggleMission() {
+            isTracking = !isTracking;
+            const btn = document.getElementById('startBtn');
+            
+            if(isTracking) {
+                btn.innerText = "STOP TRACKING";
+                btn.className = "red-btn";
+                speak("Mission start.");
+                runTrackingLoop(); // Start the infinite loop
+            } else {
+                btn.innerText = "START TRACKING";
+                btn.className = "blue-btn";
+                sendToRobot(0, 0); // Park the robot
+            }
+        }
+
+        function runTrackingLoop() {
+            if(!isTracking) return; // Stop if user clicked Stop
+
+            // 1. Get current time and location
+            const now = new Date();
+            const myLat = parseFloat(document.getElementById('lat').value);
+            const myLon = parseFloat(document.getElementById('lon').value);
+            
+            // Convert location to "Radians" (Math language)
+            const observer = {
+                latitude: satellite.degreesToRadians(myLat),
+                longitude: satellite.degreesToRadians(myLon),
+                height: 0.03
+            };
+            
+            // 2. Find the best satellite
+            let bestSat = null;
+            let maxEl = 0; // Highest angle found
+            let bestAz = 0; // Direction of highest sat
+
+            // Loop through ALL satellites
+            const gmst = satellite.gstime(now);
+            for (let sat of satellites) {
+                // Calculate position
+                const positionAndVelocity = satellite.propagate(sat.rec, now);
+                if (!positionAndVelocity.position) continue;
+                
+                const look = satellite.ecfToLookAngles(observer, satellite.eciToEcf(positionAndVelocity.position, gmst));
+                
+                // Convert to degrees
+                const az = satellite.radiansToDegrees(look.azimuth);
+                const el = satellite.radiansToDegrees(look.elevation);
+
+                // Is it above 10 degrees? Is it higher than the last one we checked?
+                if (el > 10 && el > maxEl) {
+                    maxEl = el;
+                    bestAz = az;
+                    bestSat = sat.name;
+                }
+            }
+
+            // 3. Update Robot and Screen
+            if (bestSat) {
+                // We found a target!
+                updateScreen(bestSat, bestAz, maxEl);
+                sendToRobot(bestAz, maxEl);
+                
+                // If this is a new target, say its name!
+                if(currentSatName !== bestSat) {
+                    currentSatName = bestSat;
+                    speak("Tracking " + bestSat);
+                    document.getElementById('nextPassInfo').innerText = "";
+                }
+            } else {
+                // No target found
+                updateScreen("SCANNING...", 0, 0);
+                sendToRobot(0, 0); // Park
+                
+                if(currentSatName !== "") {
+                    speak("Target lost. Scanning.");
+                    currentSatName = "";
+                    document.getElementById('nextPassInfo').innerText = "Waiting for next satellite...";
+                }
+            }
+
+            // Run this function again in 0.5 seconds
+            setTimeout(runTrackingLoop, 500);
+        }
+
+        // --- HELPER FUNCTIONS ---
+        
+        // Send numbers to the robot
+        async function sendToRobot(az, el) {
+            if(robotChar) {
+                // Turn numbers into text like "150.5,45.0\n"
+                const message = az.toFixed(1) + "," + el.toFixed(1) + "\n";
+                // Send it over Bluetooth
+                await robotChar.writeValue(new TextEncoder().encode(message));
+            }
+        }
+
+        // Update the HTML text and Radar dot
+        function updateScreen(name, az, el) {
+            document.getElementById('satName').innerText = name;
+            
+            // Only update numbers if we are actually tracking
+            if(name !== "SCANNING...") {
+                document.getElementById('valAz').innerText = az.toFixed(0);
+                document.getElementById('valEl').innerText = el.toFixed(0);
+                
+                // Move the Radar Dot
+                const dot = document.getElementById('dot');
+                dot.style.display = "block";
+                
+                // Math to place dot on circle
+                // Center is 150px, 150px. Radius is 150px.
+                // 90 degrees elevation = distance 0 (center)
+                // 0 degrees elevation = distance 150 (edge)
+                const distance = 150 * (1 - (el / 90));
+                
+                // Rotate angle. 0 degrees Azimuth is usually Up (North)
+                // We need to convert degrees to "Math Radians" and adjust for screen rotation
+                const angleRad = (az - 90) * (Math.PI / 180);
+                
+                const x = 150 + distance * Math.cos(angleRad);
+                const y = 150 + distance * Math.sin(angleRad);
+                
+                dot.style.left = (x - 7) + "px"; // -7 to center the dot
+                dot.style.top = (y - 7) + "px";
+            } else {
+                document.getElementById('dot').style.display = "none";
+            }
+        }
+
+        // Make the computer speak
+        function speak(text) {
+            const msg = new SpeechSynthesisUtterance(text);
+            window.speechSynthesis.speak(msg);
+        }
+    </script>
+</body>
+</html>
