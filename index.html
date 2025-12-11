@@ -265,7 +265,169 @@
             }
 
             // 2. GET CURRENT MISSION
-            const nextM = activeMissions
+            const nextM = activeMissions[0];
+            const diff = nextM.start - now;
+            
+            // 3. UPDATE TIMER
+            if(diff > 0) {
+                // Counting down
+                const h = Math.floor(diff/3600000).toString().padStart(2,'0');
+                const m = Math.floor((diff%3600000)/60000).toString().padStart(2,'0');
+                const s = Math.floor((diff%60000)/1000).toString().padStart(2,'0');
+                document.getElementById('launchMsg').innerText = `NEXT: ${nextM.name}`;
+                document.getElementById('launchMsg').style.color = "#94a3b8";
+                document.getElementById('mainTimer').innerText = `T-MINUS ${h}:${m}:${s}`;
+                document.getElementById('mainTimer').style.color = "#22c55e";
+            } else {
+                // Tracking!
+                document.getElementById('launchMsg').innerText = `TRACKING ACTIVE: ${nextM.name}`;
+                document.getElementById('launchMsg').style.color = "#f59e0b";
+                document.getElementById('mainTimer').innerText = "IN PROGRESS";
+                document.getElementById('mainTimer').style.color = "#f59e0b";
+                
+                // Highlight active in list
+                const items = document.querySelectorAll('.playlist-item');
+                if(items.length > 0) items[0].classList.add('active-mission');
+            }
+            
+            document.getElementById('subTimer').innerText = `Start: ${nextM.start.toLocaleTimeString()}`;
+            
+            // 4. DRAW RADAR (Always show next/current mission path)
+            drawRadar(nextM.path);
+
+        }, 1000);
+    }
+
+    function renderPlaylistDOM(list = playlist) {
+        const div = document.getElementById('playlist');
+        div.innerHTML = "";
+        list.forEach((m, i) => {
+            const el = document.createElement('div');
+            el.className = 'playlist-item' + (m.isPriority ? ' iss' : '');
+            el.innerHTML = `
+                <div class="slot-badge">${i+1}</div>
+                <div class="sat-info">
+                    <div>${m.name} ${m.isPriority ? '⭐' : ''}</div>
+                    <div>${m.start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+                </div>
+                <div class="sat-el">${m.maxEl.toFixed(0)}°</div>
+            `;
+            div.appendChild(el);
+        });
+    }
+
+    function drawRadar(path) {
+        ctx.fillStyle = "#000"; ctx.fillRect(0,0,300,300);
+        const cx=150, cy=150, r=135;
+        ctx.strokeStyle = "#334155"; ctx.lineWidth=1;
+        [1, 0.66, 0.33].forEach(s => { ctx.beginPath(); ctx.arc(cx,cy,r*s,0,Math.PI*2); ctx.stroke(); });
+        ctx.beginPath(); ctx.moveTo(cx,0); ctx.lineTo(cx,300); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,cy); ctx.lineTo(300,cy); ctx.stroke();
+        if(!path) return;
+
+        ctx.beginPath();
+        ctx.strokeStyle = "#22c55e"; ctx.lineWidth=3;
+        let first = true;
+        path.forEach(pt => {
+            const dist = r * (1 - (pt.el/90));
+            const rad = (pt.az - 90) * (Math.PI/180);
+            const x = cx + dist * Math.cos(rad);
+            const y = cy + dist * Math.sin(rad);
+            if(first) { ctx.moveTo(x,y); first=false; } else ctx.lineTo(x,y);
+        });
+        ctx.stroke();
+
+        const start = path[0];
+        const d = r * (1 - (start.el/90));
+        const ra = (start.az - 90) * (Math.PI/180);
+        ctx.fillStyle = "#3b82f6";
+        ctx.beginPath(); ctx.arc(cx + d*Math.cos(ra), cy + d*Math.sin(ra), 6, 0, Math.PI*2); ctx.fill();
+    }
+
+    function generateCode() {
+        let py = "playlist = [\n";
+        playlist.forEach(m => {
+            let pts = "";
+            m.path.forEach(pt => {
+                let az = pt.az > 180 ? pt.az - 360 : pt.az;
+                pts += `(${pt.t},${az.toFixed(1)},${pt.el.toFixed(1)}),`;
+            });
+            const offsetSec = Math.floor((m.start - playlist[0].start) / 1000);
+            py += `    {"name":"${m.name}", "start_sec":${offsetSec}, "path":[${pts}]},\n`;
+        });
+        py += "]\n";
+        
+        const template = `from pybricks.hubs import InventorHub
+from pybricks.pupdevices import Motor
+from pybricks.parameters import Port, Direction, Color, Button
+from pybricks.tools import wait, StopWatch
+
+hub = InventorHub()
+az = Motor(Port.A, Direction.CLOCKWISE)
+el = Motor(Port.B, Direction.COUNTERCLOCKWISE)
+
+${py}
+
+# 1. ARM
+hub.light.on(Color.BLUE)
+print("READY. PRESS LEFT TO ARM.")
+while Button.LEFT not in hub.buttons.pressed(): wait(10)
+while Button.LEFT in hub.buttons.pressed(): wait(10)
+
+# Move to Mission 1 Start
+hub.light.on(Color.ORANGE)
+m1 = playlist[0]
+print("MOVING TO START: " + m1["name"])
+start_pt = m1["path"][0]
+az.run_target(500, start_pt[1], wait=False)
+el.run_target(500, start_pt[2], wait=True)
+
+# 2. WAIT FOR LAUNCH (T=0)
+hub.light.blink(Color.ORANGE, [200, 200])
+print("PRESS RIGHT AT EXACT START TIME")
+while Button.RIGHT not in hub.buttons.pressed(): wait(10)
+
+# 3. AUTO-PLAYLIST
+hub.light.on(Color.GREEN)
+master_clock = StopWatch()
+master_clock.reset()
+
+for i, mission in enumerate(playlist):
+    print("RUNNING: " + mission["name"])
+    hub.light.on(Color.GREEN)
+    
+    target_start = mission["start_sec"] * 1000
+    if i > 0:
+        hub.light.on(Color.YELLOW)
+        sp = mission["path"][0]
+        az.run_target(500, sp[1], wait=False)
+        el.run_target(500, sp[2], wait=True)
+        
+        while master_clock.time() < target_start:
+            wait(100)
+    
+    hub.light.on(Color.GREEN)
+    for pt in mission["path"]:
+        target_abs = target_start + (pt[0] * 1000)
+        while master_clock.time() < target_abs:
+            wait(10)
+        az.track_target(pt[1])
+        el.track_target(pt[2])
+
+hub.light.blink(Color.GREEN, [500, 500])
+print("ALL MISSIONS DONE")`;
+
+        document.getElementById('codeBox').value = template;
+    }
+
+    function copyCode() {
+        document.getElementById('codeBox').select();
+        document.execCommand('copy');
+    }
+</script>
+</body>
+</html>
+
 
 
 
