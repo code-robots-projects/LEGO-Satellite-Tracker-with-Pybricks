@@ -5,7 +5,7 @@
     <title>LEGO Mission Commander</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/4.1.3/satellite.min.js"></script>
     <style>
-        :root { --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --accent: #3b82f6; --success: #22c55e; }
+        :root { --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --accent: #3b82f6; --success: #22c55e; --danger: #ef4444; }
         body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 20px; margin: 0; }
         .container { max-width: 1100px; margin: 0 auto; }
         
@@ -19,17 +19,19 @@
         h3 { border-bottom: 1px solid #475569; padding-bottom: 10px; margin-top: 0; color: #94a3b8; }
 
         /* Inputs & Buttons */
-        input { background: #334155; border: 1px solid #475569; color: white; padding: 8px; border-radius: 6px; width: 100px; text-align: center; }
-        button { padding: 10px; border: none; cursor: pointer; border-radius: 6px; font-weight: bold; width: 100%; margin-top: 5px; color: white; transition: 0.2s; }
+        input { background: #334155; border: 1px solid #475569; color: white; padding: 10px; border-radius: 6px; width: 100px; text-align: center; font-size: 1em; }
+        label { font-size: 0.8em; color: #94a3b8; display: block; margin-bottom: 5px; font-weight: bold; }
+        
+        button { padding: 12px; border: none; cursor: pointer; border-radius: 6px; font-weight: bold; width: 100%; color: white; transition: 0.2s; font-size: 1em; }
         .btn-blue { background: var(--accent); } .btn-blue:hover { background: #2563eb; }
         .btn-green { background: var(--success); } .btn-green:hover { background: #16a34a; }
 
         /* Pass List */
-        .pass-list { height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+        .pass-list { height: 450px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 5px; }
         .pass-item { background: #0f172a; padding: 12px; border-radius: 8px; cursor: pointer; border: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; transition: 0.2s; }
         .pass-item:hover { border-color: var(--accent); background: #1e293b; }
         .pass-item.active { border-color: var(--success); background: #064e3b; }
-        .sat-name { font-weight: bold; display: block; }
+        .sat-name { font-weight: bold; display: block; font-size: 1.1em; }
         .sat-time { font-size: 0.9em; color: #94a3b8; }
         .sat-el { font-weight: bold; color: #fbbf24; }
 
@@ -40,11 +42,18 @@
         
         /* Timer */
         #countdownBox { text-align: center; background: #000; padding: 15px; border-radius: 8px; margin-top: 20px; border: 1px solid #333; }
-        #timer { font-family: monospace; font-size: 2.5em; color: var(--success); display: block; }
-        #launchInfo { color: #94a3b8; font-size: 0.9em; margin-top: 5px; }
+        #timer { font-family: monospace; font-size: 2.5em; color: var(--success); display: block; margin: 5px 0; }
+        #launchInfo { color: #94a3b8; font-size: 0.9em; font-weight: bold; text-transform: uppercase; }
 
-        textarea { width: 100%; height: 200px; background: #0f172a; color: #a5f3fc; font-family: monospace; padding: 10px; border-radius: 8px; border: 1px solid #334155; margin-top: 10px; }
+        /* Code Box */
+        textarea { width: 100%; height: 200px; background: #0f172a; color: #a5f3fc; font-family: monospace; padding: 10px; border-radius: 8px; border: 1px solid #334155; margin-top: 10px; resize: vertical; }
         .hidden { display: none; }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
     </style>
 </head>
 <body>
@@ -52,38 +61,40 @@
 <div class="container">
     <h1>🛰️ LEGO Mission Commander</h1>
 
-    <div class="card" style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center; justify-content: center;">
+    <div class="card" style="display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-end; justify-content: center;">
         <div>
-            <label style="color:#94a3b8; font-size:0.9em;">LATITUDE</label><br>
+            <label>LATITUDE</label>
             <input type="number" id="lat" placeholder="0.00" step="0.0001">
         </div>
         <div>
-            <label style="color:#94a3b8; font-size:0.9em;">LONGITUDE</label><br>
+            <label>LONGITUDE</label>
             <input type="number" id="lon" placeholder="0.00" step="0.0001">
         </div>
-        <div style="flex-grow: 1; max-width: 150px;">
-             <button class="btn-blue" onclick="detectLoc()">📍 Detect</button>
+        <div style="flex-grow: 0;">
+             <button class="btn-blue" onclick="detectLoc()" style="width: auto; padding: 10px 20px;">📍 Detect</button>
         </div>
         <div>
-            <label style="color:#94a3b8; font-size:0.9em;">SEARCH FROM</label><br>
+            <label>START SEARCH FROM</label>
             <input type="time" id="startTime">
         </div>
-        <div style="flex-grow: 1; max-width: 200px;">
-            <button class="btn-green" onclick="generatePack()">🚀 Scan Sky & Build</button>
+        <div style="flex-grow: 1; max-width: 250px;">
+            <button class="btn-green" onclick="generatePack()">🚀 Scan Sky & Build Mission</button>
         </div>
     </div>
-    <div id="status" style="text-align: center; color: #fbbf24; margin-top: 10px; font-weight: bold;"></div>
+    <div id="status" style="text-align: center; color: #fbbf24; margin-top: 15px; font-weight: bold; min-height: 1.2em;"></div>
 
     <div id="mainDash" class="dashboard hidden">
         
         <div class="card">
-            <h3>Available Missions (Next 12h)</h3>
-            <p style="font-size:0.8em; color:#64748b; margin-bottom:10px;">Select a pass to visualize it.</p>
+            <h3>Mission Manifest (Next 12h)</h3>
+            <p style="font-size:0.8em; color:#64748b; margin-bottom:15px;">
+                These are the top 10 bright passes found. Click one to see the path.
+            </p>
             <div id="passList" class="pass-list"></div>
         </div>
 
         <div class="card">
-            <h3>Mission Trajectory & Launch Control</h3>
+            <h3>Mission Control</h3>
             
             <div id="radarContainer">
                 <canvas id="skyCanvas"></canvas>
@@ -94,18 +105,20 @@
             </div>
 
             <div id="countdownBox">
-                <span id="launchInfo">SELECT A MISSION</span>
-                <span id="timer">--:--:--</span>
-                <div style="color: #64748b; font-size: 0.8em; margin-top:5px;">
-                    When timer hits 00:00:00, press Robot Center Button.
+                <div id="launchInfo">SELECT A MISSION</div>
+                <div id="timer">--:--:--</div>
+                <div style="color: #64748b; font-size: 0.8em;">
+                    Arm robot on correct slot. Press Center Button at T-Minus 0.
                 </div>
             </div>
 
-            <div style="margin-top: 20px; border-top: 1px solid #333; padding-top: 10px;">
-                <h4 style="margin:0; color:#94a3b8;">Robot Mission Code</h4>
-                <p style="font-size:0.8em; color:#64748b;">Copy this once. It contains ALL missions below.</p>
-                <textarea id="codeBox" readonly></textarea>
-                <button class="btn-blue" onclick="copyCode()">📋 Copy Code</button>
+            <div style="margin-top: 20px; border-top: 1px solid #333; padding-top: 15px;">
+                <h4 style="margin:0 0 5px 0; color:#94a3b8;">Python Mission Code</h4>
+                <p style="font-size:0.8em; color:#64748b; margin:0;">
+                    Copy this code to Pybricks. It contains ALL 10 missions listed on the left.
+                </p>
+                <textarea id="codeBox" readonly onclick="this.select()"></textarea>
+                <button class="btn-blue" onclick="copyCode()">📋 Copy Code to Clipboard</button>
             </div>
         </div>
     </div>
@@ -113,35 +126,65 @@
 
 <script>
     // --- INIT ---
+    // Set default time to now
     const now = new Date();
-    document.getElementById('startTime').value = now.toTimeString().substring(0,5);
+    const timeStr = now.toTimeString().substring(0,5);
+    document.getElementById('startTime').value = timeStr;
+
     const canvas = document.getElementById('skyCanvas');
     const ctx = canvas.getContext('2d');
     
-    // Resize Canvas Resolution
-    canvas.width = 400; 
-    canvas.height = 400;
+    // Internal resolution for crisp lines
+    canvas.width = 800; 
+    canvas.height = 800;
 
     let missions = []; // Stores the computed mission data
     let countdownInterval = null;
 
-    // --- 1. LOCATION ---
+    // --- 1. ROBUST LOCATION DETECTION ---
     function detectLoc() {
-        if(!navigator.geolocation) return alert("Browser does not support geolocation");
-        navigator.geolocation.getCurrentPosition(p => {
-            document.getElementById('lat').value = p.coords.latitude.toFixed(4);
-            document.getElementById('lon').value = p.coords.longitude.toFixed(4);
-        });
+        const status = document.getElementById('status');
+        status.innerText = "Requesting GPS Access...";
+        
+        if(!navigator.geolocation) {
+            alert("Error: Your browser does not support Geolocation.");
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            (p) => {
+                document.getElementById('lat').value = p.coords.latitude.toFixed(4);
+                document.getElementById('lon').value = p.coords.longitude.toFixed(4);
+                status.innerText = "Location Found!";
+                status.style.color = "#22c55e"; 
+                setTimeout(() => status.innerText = "", 2000);
+            },
+            (err) => {
+                console.error(err);
+                let msg = "Unknown Error";
+                switch(err.code) {
+                    case 1: msg = "Permission Denied. Check browser settings."; break;
+                    case 2: msg = "Position Unavailable."; break;
+                    case 3: msg = "Timeout."; break;
+                }
+                alert("⚠️ Location Failed: " + msg + "\n\nPlease enter Latitude/Longitude manually.");
+                status.innerText = "Location Failed";
+                status.style.color = "#ef4444"; 
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
     }
 
     // --- 2. GENERATOR CORE ---
     async function generatePack() {
         const lat = parseFloat(document.getElementById('lat').value);
         const lon = parseFloat(document.getElementById('lon').value);
-        if(isNaN(lat)) return alert("Set Location First!");
+        
+        if(isNaN(lat) || isNaN(lon)) return alert("Please set Latitude and Longitude first!");
 
         const status = document.getElementById('status');
         status.innerText = "Downloading Orbit Data...";
+        status.style.color = "#fbbf24";
 
         try {
             // Fetch TLE
@@ -150,20 +193,28 @@
             const lines = txt.split('\n');
             const sats = [];
             for(let i=0; i<lines.length; i+=3) {
-                if(lines[i+1]?.startsWith('1')) sats.push({ name: lines[i].trim(), rec: satellite.twoline2satrec(lines[i+1], lines[i+2]) });
+                if(lines[i+1]?.startsWith('1')) {
+                    sats.push({ 
+                        name: lines[i].trim(), 
+                        rec: satellite.twoline2satrec(lines[i+1], lines[i+2]) 
+                    });
+                }
             }
 
-            status.innerText = "Simulating Orbits...";
+            status.innerText = "Simulating Orbits (Next 12 Hours)...";
             
             // Setup Search Time
             const timeInput = document.getElementById('startTime').value.split(':');
             const startSearch = new Date();
             startSearch.setHours(timeInput[0], timeInput[1], 0, 0);
+            
+            // If input time is earlier than now, assume it's for today (passed events)
+            // or if it's vastly different, logic holds. Standard Date object handling.
 
             const obs = { latitude: satellite.degreesToRadians(lat), longitude: satellite.degreesToRadians(lon), height: 0.03 };
             const foundPasses = [];
 
-            // Scan next 12h
+            // Scan next 12h (720 minutes)
             for(let s of sats) {
                 let inPass = false, maxEl = 0, startT = null;
                 // Check every minute (low res scan)
@@ -182,7 +233,7 @@
                     } else {
                         if(inPass) {
                             inPass = false;
-                            if(maxEl > 25) { // Only bright passes
+                            if(maxEl > 25) { // Filter: Only bright passes > 25 deg elevation
                                 foundPasses.push({ name: s.name, start: startT, maxEl: maxEl, rec: s.rec });
                             }
                         }
@@ -190,26 +241,33 @@
                 }
             }
 
-            // Sort & Pick Top 10
+            // Sort by Time & Pick Top 10
             foundPasses.sort((a,b) => a.start - b.start);
             missions = foundPasses.slice(0, 10);
 
-            if(missions.length === 0) { status.innerText = "No passes found."; return; }
+            if(missions.length === 0) { 
+                status.innerText = "No bright passes found in next 12h."; 
+                return; 
+            }
 
             // PRE-CALCULATE PATHS FOR ALL 10
-            status.innerText = "Calculating High-Res Paths...";
+            status.innerText = "Calculating High-Res Flight Paths...";
             missions.forEach(m => {
-                m.path = calculatePath(m, obs); // returns array of {az, el}
+                m.path = calculatePath(m, obs); // returns array of {t, az, el}
             });
 
             // RENDER UI
-            status.innerText = "";
+            status.innerText = `Found ${missions.length} Missions. Ready.`;
+            status.style.color = "#22c55e";
             document.getElementById('mainDash').classList.remove('hidden');
             renderList();
             generatePythonCode(obs);
             drawRadar([]); // Clear Radar
 
-        } catch(e) { status.innerText = "Error: " + e; }
+        } catch(e) { 
+            status.innerText = "Error: " + e; 
+            status.style.color = "#ef4444";
+        }
     }
 
     function calculatePath(mission, obs) {
@@ -228,7 +286,7 @@
 
             if(el < 0) break;
             
-            // We store standard Az (0-360) for Radar, convert for Robot later
+            // Store standard Az (0-360) for Radar
             path.push({ t: s, az: az, el: el });
         }
         return path;
@@ -244,9 +302,9 @@
             item.onclick = () => selectMission(i);
             item.innerHTML = `
                 <div>
-                    <span style="color:#3b82f6; font-weight:bold; margin-right:10px;">#${i}</span>
+                    <span style="color:#3b82f6; font-weight:bold; margin-right:10px; font-size:1.2em;">#${i}</span>
                     <span class="sat-name">${m.name}</span>
-                    <span class="sat-time">Starts: ${m.start.toLocaleTimeString()}</span>
+                    <span class="sat-time">Starts: ${m.start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
                 </div>
                 <div class="sat-el">Max ${m.maxEl.toFixed(0)}°</div>
             `;
@@ -270,14 +328,190 @@
     }
 
     function drawRadar(path) {
-        // Clear
+        // Clear & Draw Grid
         ctx.fillStyle = "#000";
-        ctx.fillRect(0,0,400,400);
+        ctx.fillRect(0,0,800,800);
         
-        // Draw Grid
-        const cx = 200, cy = 200, r = 180;
-        ctx.strokeStyle = "#334155"; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke(); // 0 deg
-        ctx.beginPath(); ctx.arc(cx,cy,r*0.66,0,Math.PI*2); ctx.stroke(); // 3
+        const cx = 400, cy = 400, r = 360; // Scaled for 800px canvas
+        ctx.strokeStyle = "#334155"; ctx.lineWidth = 2;
+        
+        // Rings
+        ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke(); // Horizon
+        ctx.beginPath(); ctx.arc(cx,cy,r*0.66,0,Math.PI*2); ctx.stroke(); // 30 deg
+        ctx.beginPath(); ctx.arc(cx,cy,r*0.33,0,Math.PI*2); ctx.stroke(); // 60 deg
+        
+        // Crosshairs
+        ctx.beginPath(); ctx.moveTo(cx,0); ctx.lineTo(cx,800); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,cy); ctx.lineTo(800,cy); ctx.stroke();
+
+        if(!path || path.length === 0) return;
+
+        // Draw Path
+        ctx.beginPath();
+        ctx.strokeStyle = "#22c55e"; // Green path
+        ctx.lineWidth = 6;
+        
+        let first = true;
+        path.forEach(pt => {
+            // Radar Math: Az 0 (North) is Up (-90 deg in CSS/Canvas radians)
+            // Dist 0 is Center (90 El), Dist Max is Edge (0 El)
+            const dist = r * (1 - (pt.el / 90));
+            const angle = (pt.az - 90) * (Math.PI/180);
+            
+            const x = cx + dist * Math.cos(angle);
+            const y = cy + dist * Math.sin(angle);
+            
+            if(first) { ctx.moveTo(x,y); first=false; }
+            else { ctx.lineTo(x,y); }
+        });
+        ctx.stroke();
+
+        // Draw Start Dot
+        const startPt = path[0];
+        const dist = r * (1 - (startPt.el / 90));
+        const angle = (startPt.az - 90) * (Math.PI/180);
+        ctx.fillStyle = "#3b82f6"; // Blue start dot
+        ctx.beginPath(); ctx.arc(cx + dist*Math.cos(angle), cy + dist*Math.sin(angle), 15, 0, Math.PI*2); ctx.fill();
+    }
+
+    function startTimer(targetDate, name) {
+        if(countdownInterval) clearInterval(countdownInterval);
+        const display = document.getElementById('timer');
+        const info = document.getElementById('launchInfo');
+
+        info.innerText = `LAUNCHING: ${name}`;
+
+        countdownInterval = setInterval(() => {
+            const diff = targetDate - new Date();
+            
+            if(diff <= 0) {
+                // Launch time passed
+                if(diff > -600000) { // Still tracking (within 10 mins)
+                    display.innerText = "TRACKING ACTIVE";
+                    display.style.color = "#fbbf24";
+                } else {
+                    display.innerText = "MISSION FINISHED";
+                    display.style.color = "#64748b";
+                    clearInterval(countdownInterval);
+                }
+                return;
+            }
+
+            // Format HH:MM:SS
+            const h = Math.floor(diff / 3600000).toString().padStart(2,'0');
+            const m = Math.floor((diff % 3600000) / 60000).toString().padStart(2,'0');
+            const s = Math.floor((diff % 60000) / 1000).toString().padStart(2,'0');
+            
+            display.innerText = `T-MINUS ${h}:${m}:${s}`;
+            display.style.color = "#22c55e";
+        }, 1000);
+    }
+
+    function generatePythonCode(obs) {
+        let pyData = "missions = [\n";
+        missions.forEach(m => {
+            let pathStr = "";
+            m.path.forEach(pt => {
+                // ROBOT ANGLE CONVERSION
+                // Map 0-360 compass to -180/+180 motors
+                let rAz = pt.az;
+                if(rAz > 180) rAz -= 360;
+                // Store tuple (TimeSec, Az, El)
+                pathStr += `(${pt.t},${rAz.toFixed(1)},${pt.el.toFixed(1)}),`;
+            });
+            // Escape quote chars in name just in case
+            const safeName = m.name.replace(/"/g, '');
+            pyData += `    { "name": "${safeName}", "time": "${m.start.toLocaleTimeString([], {hour12:false})}", "path": [${pathStr}] },\n`;
+        });
+        pyData += "]";
+
+        const fullCode = `
+from pybricks.hubs import InventorHub
+from pybricks.pupdevices import Motor
+from pybricks.parameters import Port, Direction, Color, Button
+from pybricks.tools import wait, StopWatch
+
+hub = InventorHub()
+# Setup Motors (Adjust Direction if needed)
+az_motor = Motor(Port.A, Direction.CLOCKWISE)
+el_motor = Motor(Port.B, Direction.COUNTERCLOCKWISE)
+
+# --- MISSION DATA ---
+${pyData}
+
+# --- MENU SYSTEM ---
+slot = 0
+total = len(missions)
+
+def show_menu():
+    hub.display.number(slot)
+    m = missions[slot]
+    print("Slot", slot, ":", m["name"], "@", m["time"])
+
+hub.light.on(Color.BLUE)
+show_menu()
+
+# 1. SELECTION PHASE
+while True:
+    pressed = hub.buttons.pressed()
+    if Button.RIGHT in pressed:
+        slot = (slot + 1) % total
+        show_menu()
+        wait(200)
+    elif Button.LEFT in pressed:
+        slot = (slot - 1) % total
+        show_menu()
+        wait(200)
+    elif Button.CENTER in pressed:
+        # Wait for release
+        while Button.CENTER in hub.buttons.pressed(): wait(10)
+        break
+    wait(50)
+
+# 2. ARMING PHASE
+m = missions[slot]
+hub.display.off()
+hub.light.blink(Color.ORANGE, [500, 500])
+print("ARMED: " + m["name"])
+print("LAUNCH AT: " + m["time"])
+
+# Move to start position quickly
+start = m["path"][0]
+az_motor.run_target(500, start[1], wait=False)
+el_motor.run_target(500, start[2], wait=True)
+
+# 3. WAIT FOR LAUNCH TRIGGER
+while Button.CENTER not in hub.buttons.pressed():
+    wait(10)
+
+# 4. EXECUTE MISSION
+hub.light.on(Color.GREEN)
+print("LAUNCHING...")
+watch = StopWatch()
+watch.reset()
+
+for pt in m["path"]:
+    target_ms = pt[0] * 1000
+    # Wait for sync
+    while watch.time() < target_ms:
+        wait(10)
+    # Move
+    az_motor.track_target(pt[1])
+    el_motor.track_target(pt[2])
+
+hub.light.blink(Color.GREEN, [200, 200])
+print("MISSION COMPLETE")
+`;
+        document.getElementById('codeBox').value = fullCode;
+    }
+
+    function copyCode() {
+        document.getElementById("codeBox").select();
+        document.execCommand("copy");
+    }
+</script>
+</body>
+</html>
+
 
 
