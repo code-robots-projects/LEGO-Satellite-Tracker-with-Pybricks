@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LEGO Mission Control</title>
+    <title>LEGO Mission Commander Pro</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/4.1.3/satellite.min.js"></script>
     <style>
-        :root { --bg: #0f172a; --panel: #1e293b; --text: #e2e8f0; --blue: #3b82f6; --green: #22c55e; --orange: #f59e0b; }
+        :root { --bg: #0f172a; --panel: #1e293b; --text: #e2e8f0; --blue: #3b82f6; --green: #22c55e; --orange: #f59e0b; --red: #ef4444; }
         body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
         .container { max-width: 1200px; margin: 0 auto; }
         
@@ -18,32 +18,31 @@
         h3 { color: #94a3b8; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-top: 0; }
 
         .control-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; }
-        input { background: #0f172a; border: 1px solid #475569; color: white; padding: 10px; border-radius: 6px; flex: 1; text-align: center; }
+        input { background: #0f172a; border: 1px solid #475569; color: white; padding: 10px; border-radius: 6px; flex: 1; text-align: center; font-family: monospace; }
         
         button { padding: 12px; border: none; cursor: pointer; border-radius: 6px; font-weight: bold; color: white; transition: 0.2s; }
         .btn-blue { background: var(--blue); width: 100%; } .btn-blue:hover { background: #2563eb; }
         .btn-green { background: var(--green); } .btn-green:hover { background: #16a34a; }
         .btn-copy { background: #475569; width: 100%; margin-top: 10px; }
 
-        .playlist { max-height: 500px; overflow-y: hidden; display: flex; flex-direction: column; gap: 8px; transition: all 0.5s ease; }
-        .playlist-item { background: #0f172a; padding: 15px; border-radius: 8px; border: 1px solid #334155; display: grid; grid-template-columns: 40px 1fr auto; align-items: center; transition: all 0.5s ease; opacity: 1; }
+        .playlist { max-height: 500px; overflow-y: hidden; display: flex; flex-direction: column; gap: 8px; }
+        .playlist-item { background: #0f172a; padding: 15px; border-radius: 8px; border: 1px solid #334155; display: grid; grid-template-columns: 40px 1fr auto; align-items: center; transition: all 0.3s ease; }
         .playlist-item.iss { border-color: var(--orange); background: #3d2203; } 
-        .playlist-item.active-mission { border-color: var(--green); background: #064e3b; transform: scale(1.02); }
-        .playlist-item.fading { opacity: 0; transform: translateX(-50px); }
+        .playlist-item.active-mission { border-color: var(--green); background: #064e3b; box-shadow: 0 0 15px rgba(34, 197, 94, 0.2); }
 
         .slot-badge { background: #475569; color: white; border-radius: 50%; width: 25px; height: 25px; display: flex; align-items: center; justify-content: center; font-size: 0.8em; font-weight: bold; }
         .sat-info div:first-child { font-weight: bold; font-size: 1.1em; }
         .sat-info div:last-child { font-size: 0.85em; color: #94a3b8; }
         .sat-el { font-weight: bold; color: var(--green); }
 
-        #radarContainer { width: 300px; height: 300px; margin: 0 auto; background: #000; border-radius: 50%; border: 2px solid #475569; position: relative; }
+        #radarContainer { width: 320px; height: 320px; margin: 0 auto; background: #000; border-radius: 50%; border: 2px solid #475569; position: relative; }
         canvas { width: 100%; height: 100%; border-radius: 50%; }
         .compass { position: absolute; color: #64748b; font-size: 0.8em; font-weight: bold; }
         
         #timerBox { text-align: center; background: #000; padding: 15px; border-radius: 8px; margin-top: 20px; border: 1px solid #333; }
         #mainTimer { font-family: monospace; font-size: 2.5em; color: var(--green); display: block; }
         #subTimer { font-family: monospace; font-size: 1.2em; color: var(--orange); display: block; margin-top: 5px; }
-        #launchMsg { color: #94a3b8; font-size: 0.9em; }
+        #launchMsg { color: #94a3b8; font-size: 0.9em; letter-spacing: 1px; }
 
         textarea { width: 100%; height: 150px; background: #0f172a; color: #a5f3fc; font-family: monospace; padding: 10px; border-radius: 8px; border: 1px solid #334155; margin-top: 10px; resize: vertical; }
         .hidden { display: none; }
@@ -52,7 +51,7 @@
 <body>
 
 <div class="container">
-    <h1>🛰️ LEGO Mission Control</h1>
+    <h1>🛰️ LEGO Mission Commander Pro</h1>
 
     <div class="card">
         <div class="control-row">
@@ -60,7 +59,7 @@
             <input type="number" id="lon" placeholder="Longitude" step="0.0001">
             <button class="btn-green" style="flex:0 0 100px" onclick="detectLoc()">📍 Detect</button>
             <input type="time" id="startTime">
-            <button class="btn-blue" style="flex:2" onclick="generatePlaylist()">🚀 Build Playlist</button>
+            <button class="btn-blue" style="flex:2" onclick="generatePlaylist()">🚀 Build High-Res Playlist</button>
         </div>
         <div id="status" style="text-align: center; color: var(--orange); font-weight: bold; height: 20px;"></div>
     </div>
@@ -68,13 +67,13 @@
     <div id="mainUI" class="grid hidden">
         
         <div class="card">
-            <h3>Upcoming Missions</h3>
-            <p style="font-size:0.85em; color:#94a3b8;">Items disappear when pass completes.</p>
+            <h3>Mission Playlist</h3>
+            <p style="font-size:0.85em; color:#94a3b8;">Current mission highlights in Green. Completed missions vanish.</p>
             <div id="playlist" class="playlist"></div>
         </div>
 
         <div class="card">
-            <h3>Live Sky Radar</h3>
+            <h3>Mission Control</h3>
             
             <div id="radarContainer">
                 <canvas id="radar"></canvas>
@@ -85,16 +84,16 @@
             </div>
 
             <div id="timerBox">
-                <div id="launchMsg">WAITING TO START</div>
+                <div id="launchMsg">SYSTEM STANDBY</div>
                 <div id="mainTimer">--:--:--</div>
                 <div id="subTimer">Next: [Loading...]</div>
             </div>
 
             <div style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #334155;">
-                <h3>Robot Python Code</h3>
+                <h3>Robot Python Code (High-Res 180° Fix)</h3>
                 <p style="font-size:0.85em; color:#94a3b8;">
-                    <b>SETUP:</b> Place robot pointing <b>North</b>. Align marks.<br>
-                    <b>ACTION:</b> Press <b>LEFT</b> to Arm. Press <b>RIGHT</b> to Launch.
+                    <b>SETUP:</b> Point North.
+                    <b>LEFT:</b> Arm. <b>RIGHT:</b> Launch.
                 </p>
                 <textarea id="codeBox" readonly></textarea>
                 <button class="btn-copy" onclick="copyCode()">📋 Copy Code</button>
@@ -108,10 +107,11 @@
     document.getElementById('startTime').value = now.toTimeString().substring(0,5);
     const canvas = document.getElementById('radar');
     const ctx = canvas.getContext('2d');
-    canvas.width = 300; canvas.height = 300;
+    canvas.width = 320; canvas.height = 320;
     
     let playlist = [];
     let timerInterval = null;
+    let animationFrame = null;
 
     // --- 1. LOCATION ---
     function detectLoc() {
@@ -184,10 +184,11 @@
 
             if(playlist.length === 0) { status.innerText = "No visible passes found."; return; }
 
-            status.innerText = "Generating Flight Plans...";
+            status.innerText = "Calculating High-Res Trajectories (3s Steps)...";
+            // High Resolution: We step every 3 seconds for smoother motor control
             playlist.forEach(m => {
-                m.path = calcPath(m, obs);
-                m.endTime = new Date(m.start.getTime() + (m.path.length * 8 * 1000));
+                m.path = calcPath(m, obs, 3); 
+                m.endTime = new Date(m.start.getTime() + (m.path.length * 3 * 1000));
             });
 
             status.innerText = "";
@@ -220,11 +221,15 @@
         return null;
     }
 
-    function calcPath(m, obs) {
+    function calcPath(m, obs, stepSec) {
         const path = [];
         const startT = m.start.getTime();
-        for(let s=0; s<900; s+=8) { 
-            const t = new Date(startT + s*1000);
+        // 15 mins max duration
+        const maxSteps = (15 * 60) / stepSec; 
+        
+        for(let s=0; s<maxSteps; s++) { 
+            const offsetMs = s * stepSec * 1000;
+            const t = new Date(startT + offsetMs);
             const gmst = satellite.gstime(t);
             const pv = satellite.propagate(m.rec, t);
             if(!pv.position) continue;
@@ -232,8 +237,9 @@
             const look = satellite.ecfToLookAngles(obs, satellite.eciToEcf(pv.position, gmst));
             const el = satellite.radiansToDegrees(look.elevation);
             const az = satellite.radiansToDegrees(look.azimuth);
+            
             if(el < 0) break;
-            path.push({ t:s, az:az, el:el });
+            path.push({ t:s*stepSec, az:az, el:el });
         }
         return path;
     }
@@ -241,17 +247,18 @@
     // --- LIVE DASHBOARD ---
     function startLiveDashboard() {
         if(timerInterval) clearInterval(timerInterval);
+        if(animationFrame) cancelAnimationFrame(animationFrame);
         
-        // Initial Render
         renderPlaylistDOM();
 
-        timerInterval = setInterval(() => {
+        // Update loop
+        const update = () => {
             const now = new Date();
             
-            // 1. FILTER COMPLETED MISSIONS
+            // Filter out completed missions
             const activeMissions = playlist.filter(m => m.endTime > now);
             
-            // Update DOM list (Simple way: if lengths mismatch, re-render)
+            // Re-render list if count changed (mission finished)
             const domList = document.getElementById('playlist');
             if(domList.children.length !== activeMissions.length) {
                 renderPlaylistDOM(activeMissions);
@@ -260,42 +267,53 @@
             if(activeMissions.length === 0) {
                 document.getElementById('launchMsg').innerText = "ALL MISSIONS COMPLETE";
                 document.getElementById('mainTimer').innerText = "00:00:00";
-                drawRadar(null);
+                drawRadar(null, null);
                 return;
             }
 
-            // 2. GET CURRENT MISSION
-            const nextM = activeMissions[0];
-            const diff = nextM.start - now;
-            
-            // 3. UPDATE TIMER
+            const current = activeMissions[0];
+            const diff = current.start - now;
+            let currentPos = null;
+
             if(diff > 0) {
-                // Counting down
+                // COUNTDOWN
                 const h = Math.floor(diff/3600000).toString().padStart(2,'0');
                 const m = Math.floor((diff%3600000)/60000).toString().padStart(2,'0');
                 const s = Math.floor((diff%60000)/1000).toString().padStart(2,'0');
-                document.getElementById('launchMsg').innerText = `NEXT: ${nextM.name}`;
+                document.getElementById('launchMsg').innerText = `NEXT: ${current.name}`;
                 document.getElementById('launchMsg').style.color = "#94a3b8";
                 document.getElementById('mainTimer').innerText = `T-MINUS ${h}:${m}:${s}`;
                 document.getElementById('mainTimer').style.color = "#22c55e";
+                
+                // Show start point on radar
+                if(current.path.length > 0) currentPos = current.path[0];
             } else {
-                // Tracking!
-                document.getElementById('launchMsg').innerText = `TRACKING ACTIVE: ${nextM.name}`;
+                // TRACKING
+                document.getElementById('launchMsg').innerText = `TRACKING ACTIVE: ${current.name}`;
                 document.getElementById('launchMsg').style.color = "#f59e0b";
                 document.getElementById('mainTimer').innerText = "IN PROGRESS";
                 document.getElementById('mainTimer').style.color = "#f59e0b";
                 
-                // Highlight active in list
+                // Calculate current live position for radar
+                const elapsedSec = Math.abs(diff) / 1000;
+                // Find point in path closest to elapsed time
+                // Since points are every 3s, index ~ elapsed/3
+                const idx = Math.floor(elapsedSec / 3);
+                if(idx < current.path.length) currentPos = current.path[idx];
+                
+                // Highlight active item
                 const items = document.querySelectorAll('.playlist-item');
                 if(items.length > 0) items[0].classList.add('active-mission');
             }
             
-            document.getElementById('subTimer').innerText = `Start: ${nextM.start.toLocaleTimeString()}`;
+            document.getElementById('subTimer').innerText = `Start: ${current.start.toLocaleTimeString()}`;
             
-            // 4. DRAW RADAR (Always show next/current mission path)
-            drawRadar(nextM.path);
-
-        }, 1000);
+            // Animate Radar
+            drawRadar(current.path, currentPos);
+            
+            animationFrame = requestAnimationFrame(update);
+        };
+        update();
     }
 
     function renderPlaylistDOM(list = playlist) {
@@ -308,7 +326,7 @@
                 <div class="slot-badge">${i+1}</div>
                 <div class="sat-info">
                     <div>${m.name} ${m.isPriority ? '⭐' : ''}</div>
-                    <div>${m.start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+                    <div>Launch: ${m.start.toLocaleTimeString()}</div>
                 </div>
                 <div class="sat-el">${m.maxEl.toFixed(0)}°</div>
             `;
@@ -316,17 +334,21 @@
         });
     }
 
-    function drawRadar(path) {
-        ctx.fillStyle = "#000"; ctx.fillRect(0,0,300,300);
-        const cx=150, cy=150, r=135;
+    function drawRadar(path, currentPos) {
+        ctx.fillStyle = "#000"; ctx.fillRect(0,0,320,320);
+        const cx=160, cy=160, r=140;
+        
+        // Grid
         ctx.strokeStyle = "#334155"; ctx.lineWidth=1;
         [1, 0.66, 0.33].forEach(s => { ctx.beginPath(); ctx.arc(cx,cy,r*s,0,Math.PI*2); ctx.stroke(); });
-        ctx.beginPath(); ctx.moveTo(cx,0); ctx.lineTo(cx,300); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(0,cy); ctx.lineTo(300,cy); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx,0); ctx.lineTo(cx,320); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,cy); ctx.lineTo(320,cy); ctx.stroke();
+
         if(!path) return;
 
+        // Draw Full Path
         ctx.beginPath();
-        ctx.strokeStyle = "#22c55e"; ctx.lineWidth=3;
+        ctx.strokeStyle = "#22c55e"; ctx.lineWidth=2;
         let first = true;
         path.forEach(pt => {
             const dist = r * (1 - (pt.el/90));
@@ -337,11 +359,24 @@
         });
         ctx.stroke();
 
-        const start = path[0];
-        const d = r * (1 - (start.el/90));
-        const ra = (start.az - 90) * (Math.PI/180);
-        ctx.fillStyle = "#3b82f6";
-        ctx.beginPath(); ctx.arc(cx + d*Math.cos(ra), cy + d*Math.sin(ra), 6, 0, Math.PI*2); ctx.fill();
+        // Draw Moving Satellite Target
+        if(currentPos) {
+            const d = r * (1 - (currentPos.el/90));
+            const ra = (currentPos.az - 90) * (Math.PI/180);
+            const tx = cx + d*Math.cos(ra);
+            const ty = cy + d*Math.sin(ra);
+            
+            // Glow
+            const grad = ctx.createRadialGradient(tx, ty, 2, tx, ty, 10);
+            grad.addColorStop(0, "#ef4444");
+            grad.addColorStop(1, "rgba(239, 68, 68, 0)");
+            ctx.fillStyle = grad;
+            ctx.beginPath(); ctx.arc(tx, ty, 10, 0, Math.PI*2); ctx.fill();
+            
+            // Core
+            ctx.fillStyle = "#fff";
+            ctx.beginPath(); ctx.arc(tx, ty, 3, 0, Math.PI*2); ctx.fill();
+        }
     }
 
     function generateCode() {
@@ -349,8 +384,16 @@
         playlist.forEach(m => {
             let pts = "";
             m.path.forEach(pt => {
-                let az = pt.az > 180 ? pt.az - 360 : pt.az;
-                pts += `(${pt.t},${az.toFixed(1)},${pt.el.toFixed(1)}),`;
+                // === 180 DEGREE FIX ===
+                // 1. Shift by 180 degrees (Flip coordinate system)
+                let finalAz = (pt.az + 180) % 360;
+                
+                // 2. Robot Conversion (0..360 -> -180..180)
+                if(finalAz > 180) finalAz -= 360;
+                
+                // Store integer (multiply by 10) to save string space
+                // But float is fine for 10 missions
+                pts += `(${pt.t},${finalAz.toFixed(1)},${pt.el.toFixed(1)}),`;
             });
             const offsetSec = Math.floor((m.start - playlist[0].start) / 1000);
             py += `    {"name":"${m.name}", "start_sec":${offsetSec}, "path":[${pts}]},\n`;
@@ -368,7 +411,7 @@ el = Motor(Port.B, Direction.COUNTERCLOCKWISE)
 
 ${py}
 
-# 1. ARM
+# 1. ARM (LEFT)
 hub.light.on(Color.BLUE)
 print("READY. PRESS LEFT TO ARM.")
 while Button.LEFT not in hub.buttons.pressed(): wait(10)
@@ -382,7 +425,7 @@ start_pt = m1["path"][0]
 az.run_target(500, start_pt[1], wait=False)
 el.run_target(500, start_pt[2], wait=True)
 
-# 2. WAIT FOR LAUNCH (T=0)
+# 2. WAIT FOR LAUNCH (RIGHT)
 hub.light.blink(Color.ORANGE, [200, 200])
 print("PRESS RIGHT AT EXACT START TIME")
 while Button.RIGHT not in hub.buttons.pressed(): wait(10)
@@ -398,6 +441,7 @@ for i, mission in enumerate(playlist):
     
     target_start = mission["start_sec"] * 1000
     if i > 0:
+        print("Next mission in queue...")
         hub.light.on(Color.YELLOW)
         sp = mission["path"][0]
         az.run_target(500, sp[1], wait=False)
@@ -427,6 +471,7 @@ print("ALL MISSIONS DONE")`;
 </script>
 </body>
 </html>
+
 
 
 
