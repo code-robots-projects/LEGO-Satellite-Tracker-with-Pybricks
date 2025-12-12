@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LEGO Mission Control: Test Mode</title>
+    <title>LEGO Mission Control: Voice Edition</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/4.1.3/satellite.min.js"></script>
     <style>
         :root { --bg: #0f172a; --panel: #1e293b; --text: #e2e8f0; --blue: #3b82f6; --green: #22c55e; --orange: #f59e0b; }
@@ -50,7 +50,7 @@
 <body>
 
 <div class="container">
-    <h1>🛰️ LEGO Mission Control: Test Mode</h1>
+    <h1>🛰️ LEGO Mission Control: Voice</h1>
 
     <div class="card">
         <div class="control-row">
@@ -58,7 +58,7 @@
             <input type="number" id="lon" placeholder="Longitude" step="0.0001">
             <button class="btn-green" style="flex:0 0 100px" onclick="detectLoc()">📍 Detect</button>
             <input type="time" id="startTime">
-            <button class="btn-blue" style="flex:2" onclick="generatePlaylist()">🚀 Build Test Schedule</button>
+            <button class="btn-blue" style="flex:2" onclick="generatePlaylist()">🚀 Build Voice Schedule</button>
         </div>
         <div id="status" style="text-align: center; color: var(--orange); font-weight: bold; height: 20px;"></div>
     </div>
@@ -66,8 +66,8 @@
     <div id="mainUI" class="grid hidden">
         
         <div class="card">
-            <h3>Flight Plan</h3>
-            <p style="font-size:0.85em; color:#94a3b8;">Includes ALL sats (>10°). 30s Gap.</p>
+            <h3>Live Flight Plan</h3>
+            <p style="font-size:0.85em; color:#94a3b8;">Completed satellites drop automatically.</p>
             <div id="playlist" class="playlist"></div>
         </div>
 
@@ -111,6 +111,10 @@
     let playlist = [];
     let timerInterval = null;
     let animationFrame = null;
+    
+    // Voice State
+    let lastSpokenSat = "";
+    let lastSpokenTime = 0;
 
     // --- 1. LOCATION ---
     function detectLoc() {
@@ -121,7 +125,7 @@
         });
     }
 
-    // --- 2. GENERATE TEST PLAYLIST ---
+    // --- 2. GENERATE PLAYLIST ---
     async function generatePlaylist() {
         const lat = parseFloat(document.getElementById('lat').value);
         const lon = parseFloat(document.getElementById('lon').value);
@@ -142,7 +146,7 @@
                 }
             }
 
-            status.innerText = "Building Test Schedule...";
+            status.innerText = "Building Schedule...";
             
             const timeParts = document.getElementById('startTime').value.split(':');
             const startSearch = new Date();
@@ -151,7 +155,7 @@
             const obs = { latitude: satellite.degreesToRadians(lat), longitude: satellite.degreesToRadians(lon), height: 0.03 };
             let allPasses = [];
 
-            // 1. Find ALL passes > 10 deg (Test Mode: Lower threshold)
+            // 1. Find ALL visible passes > 10 deg (Test Mode)
             for(let s of sats) {
                 let p = findNextPass(s, startSearch, 60, obs);
                 if(p && p.maxEl > 10) allPasses.push(p);
@@ -166,15 +170,10 @@
                 let lastEnd = new Date(0);
                 
                 for(let p of allPasses) {
-                    if(playlist.length >= 10) break; // Limit to 10
+                    if(playlist.length >= 10) break; // Max 10
                     
-                    // Gap Check: Start > Last End + 30s
                     if(p.start > new Date(lastEnd.getTime() + 30000)) {
                         playlist.push(p);
-                        
-                        // Approx end time to enforce gap
-                        // (We recalculate exact end time below, but need estimation here)
-                        // Assume 10 mins if not calculated yet, or use p.end from findNextPass
                         lastEnd = p.end; 
                     }
                 }
@@ -195,6 +194,8 @@
             
             generateCode();
             startLiveDashboard();
+            
+            speak("Schedule generated. Upload code to robot.");
 
         } catch(e) { status.innerText = "Error: " + e; console.error(e); }
     }
@@ -209,13 +210,11 @@
             const look = satellite.ecfToLookAngles(obs, satellite.eciToEcf(pv.position, gmst));
             const el = satellite.radiansToDegrees(look.elevation);
             
-            if(el > 5) { // Track anything above 5 deg horizon
+            if(el > 5) { 
                 if(!inPass) { inPass=true; startT=t; maxEl=0; }
                 if(el > maxEl) maxEl=el;
             } else {
-                if(inPass) {
-                    return { name: sat.name, start: startT, end: t, maxEl: maxEl, rec: sat.rec };
-                }
+                if(inPass) return { name: sat.name, start: startT, end: t, maxEl: maxEl, rec: sat.rec };
             }
         }
         return null;
@@ -238,7 +237,14 @@
         return path;
     }
 
-    // --- LIVE DASHBOARD ---
+    // --- VOICE & DASHBOARD ---
+    function speak(text) {
+        if('speechSynthesis' in window) {
+            const u = new SpeechSynthesisUtterance(text);
+            window.speechSynthesis.speak(u);
+        }
+    }
+
     function startLiveDashboard() {
         if(timerInterval) clearInterval(timerInterval);
         if(animationFrame) cancelAnimationFrame(animationFrame);
@@ -246,9 +252,19 @@
 
         const update = () => {
             const now = new Date();
+            // FILTER: Only keep future/current missions
             const activeMissions = playlist.filter(m => m.end > now);
+            
+            // Re-render if list shrank
             const domList = document.getElementById('playlist');
-            if(domList.children.length !== activeMissions.length) renderPlaylistDOM(activeMissions);
+            if(domList.children.length !== activeMissions.length) {
+                renderPlaylistDOM(activeMissions);
+                // If a mission just finished
+                if(activeMissions.length > 0 && lastSpokenSat !== "") {
+                     speak("Pass complete. Resetting robot.");
+                     lastSpokenSat = ""; // Reset voice tracker
+                }
+            }
 
             if(activeMissions.length === 0) {
                 document.getElementById('launchMsg').innerText = "ALL DONE";
@@ -262,15 +278,21 @@
             let currentPos = null;
 
             if(diff > 0) {
+                // COUNTDOWN
                 const h = Math.floor(diff/3600000).toString().padStart(2,'0');
                 const m = Math.floor((diff%3600000)/60000).toString().padStart(2,'0');
                 const s = Math.floor((diff%60000)/1000).toString().padStart(2,'0');
                 document.getElementById('launchMsg').innerText = `NEXT: ${current.name}`;
+                document.getElementById('launchMsg').style.color = "#94a3b8";
                 document.getElementById('mainTimer').innerText = `-${h}:${m}:${s}`;
                 document.getElementById('mainTimer').style.color = "#22c55e";
                 if(current.uiPath.length > 0) currentPos = current.uiPath[0];
+                
+                lastSpokenSat = ""; // Reset voice tracker while waiting
             } else {
+                // TRACKING
                 document.getElementById('launchMsg').innerText = `TRACKING: ${current.name}`;
+                document.getElementById('launchMsg').style.color = "#f59e0b";
                 document.getElementById('mainTimer').innerText = "ACTIVE";
                 document.getElementById('mainTimer').style.color = "#f59e0b";
                 
@@ -280,6 +302,19 @@
                 
                 const items = document.querySelectorAll('.playlist-item');
                 if(items.length > 0) items[0].classList.add('active-mission');
+
+                // --- VOICE LOGIC ---
+                if (current.name !== lastSpokenSat) {
+                    speak("Now tracking " + current.name);
+                    lastSpokenSat = current.name;
+                    lastSpokenTime = Date.now();
+                } 
+                else if (Date.now() - lastSpokenTime > 60000) { // Every 60s
+                    if(currentPos) {
+                        speak(`Tracking ${current.name}. Elevation ${Math.round(currentPos.el)} degrees.`);
+                    }
+                    lastSpokenTime = Date.now();
+                }
             }
             
             document.getElementById('subTimer').innerText = `Start: ${current.start.toLocaleTimeString()}`;
@@ -428,7 +463,6 @@ for i, m in enumerate(playlist):
             el_motor.track_target(tar_el)
         wait(25) 
 
-    # RESET TO NORTH (0,0) AFTER EVERY RUN
     print("Pass Done. Resetting.")
     hub.light.on(Color.BLUE)
     az_motor.run_target(500, 0, wait=False)
