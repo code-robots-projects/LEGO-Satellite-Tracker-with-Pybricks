@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LEGO Mission Control: Geared</title>
+    <title>LEGO Mission Control: Test Mode</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/4.1.3/satellite.min.js"></script>
     <style>
         :root { --bg: #0f172a; --panel: #1e293b; --text: #e2e8f0; --blue: #3b82f6; --green: #22c55e; --orange: #f59e0b; }
@@ -50,7 +50,7 @@
 <body>
 
 <div class="container">
-    <h1>🛰️ LEGO Mission Control</h1>
+    <h1>🛰️ LEGO Mission Control: Test Mode</h1>
 
     <div class="card">
         <div class="control-row">
@@ -58,7 +58,7 @@
             <input type="number" id="lon" placeholder="Longitude" step="0.0001">
             <button class="btn-green" style="flex:0 0 100px" onclick="detectLoc()">📍 Detect</button>
             <input type="time" id="startTime">
-            <button class="btn-blue" style="flex:2" onclick="generatePlaylist()">🚀 Build Geared Schedule</button>
+            <button class="btn-blue" style="flex:2" onclick="generatePlaylist()">🚀 Build Test Schedule</button>
         </div>
         <div id="status" style="text-align: center; color: var(--orange); font-weight: bold; height: 20px;"></div>
     </div>
@@ -67,7 +67,7 @@
         
         <div class="card">
             <h3>Flight Plan</h3>
-            <p style="font-size:0.85em; color:#94a3b8;">Gear Ratio 24:8 Applied to Azimuth.</p>
+            <p style="font-size:0.85em; color:#94a3b8;">Includes ALL sats (>10°). 30s Gap.</p>
             <div id="playlist" class="playlist"></div>
         </div>
 
@@ -91,7 +91,7 @@
             <div style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #334155;">
                 <h3>Robot Python Code</h3>
                 <p style="font-size:0.85em; color:#94a3b8;">
-                    <b>GEARS:</b> Yaw Motor 24T → Arm 8T.<br>
+                    <b>SETUP:</b> Point North (0). Arm Flat (0).<br>
                     <b>LEFT:</b> Arm. <b>RIGHT:</b> Launch.
                 </p>
                 <textarea id="codeBox" readonly></textarea>
@@ -121,7 +121,7 @@
         });
     }
 
-    // --- 2. GENERATE ---
+    // --- 2. GENERATE TEST PLAYLIST ---
     async function generatePlaylist() {
         const lat = parseFloat(document.getElementById('lat').value);
         const lon = parseFloat(document.getElementById('lon').value);
@@ -142,50 +142,57 @@
                 }
             }
 
-            status.innerText = "Optimizing Schedule...";
+            status.innerText = "Building Test Schedule...";
+            
             const timeParts = document.getElementById('startTime').value.split(':');
             const startSearch = new Date();
             startSearch.setHours(timeParts[0], timeParts[1], 0, 0);
+            
             const obs = { latitude: satellite.degreesToRadians(lat), longitude: satellite.degreesToRadians(lon), height: 0.03 };
             let allPasses = [];
 
+            // 1. Find ALL passes > 10 deg (Test Mode: Lower threshold)
             for(let s of sats) {
                 let p = findNextPass(s, startSearch, 60, obs);
-                if(p && p.maxEl > 20) allPasses.push(p);
+                if(p && p.maxEl > 10) allPasses.push(p);
             }
 
+            // 2. Sort by TIME
             allPasses.sort((a,b) => a.start - b.start);
 
+            // 3. FIFO FILTER: First Available + 30s Gap
             playlist = [];
             if(allPasses.length > 0) {
-                let current = allPasses[0];
-                let group = [current];
-                for(let i=1; i<allPasses.length; i++) {
-                    const next = allPasses[i];
-                    if(next.start < new Date(current.end.getTime() + 20000)) {
-                        group.push(next);
-                    } else {
-                        group.sort((a,b) => b.maxEl - a.maxEl);
-                        playlist.push(group[0]); 
-                        current = next;
-                        group = [current];
+                let lastEnd = new Date(0);
+                
+                for(let p of allPasses) {
+                    if(playlist.length >= 10) break; // Limit to 10
+                    
+                    // Gap Check: Start > Last End + 30s
+                    if(p.start > new Date(lastEnd.getTime() + 30000)) {
+                        playlist.push(p);
+                        
+                        // Approx end time to enforce gap
+                        // (We recalculate exact end time below, but need estimation here)
+                        // Assume 10 mins if not calculated yet, or use p.end from findNextPass
+                        lastEnd = p.end; 
                     }
                 }
-                group.sort((a,b) => b.maxEl - a.maxEl);
-                playlist.push(group[0]);
             }
 
-            if(playlist.length === 0) { status.innerText = "No bright passes found."; return; }
+            if(playlist.length === 0) { status.innerText = "No passes found."; return; }
 
+            // 4. Calculate Paths
             status.innerText = "Generating Paths...";
             playlist.forEach(m => {
-                m.path = calcPath(m, obs, 12); 
-                m.uiPath = calcPath(m, obs, 2); 
+                m.path = calcPath(m, obs, 12); // 12s sparse
+                m.uiPath = calcPath(m, obs, 2); // 2s dense
                 m.end = new Date(m.start.getTime() + (m.uiPath.length * 2 * 1000));
             });
 
             status.innerText = "";
             document.getElementById('mainUI').classList.remove('hidden');
+            
             generateCode();
             startLiveDashboard();
 
@@ -201,11 +208,14 @@
             if(!pv.position) continue;
             const look = satellite.ecfToLookAngles(obs, satellite.eciToEcf(pv.position, gmst));
             const el = satellite.radiansToDegrees(look.elevation);
-            if(el > 10) {
+            
+            if(el > 5) { // Track anything above 5 deg horizon
                 if(!inPass) { inPass=true; startT=t; maxEl=0; }
                 if(el > maxEl) maxEl=el;
             } else {
-                if(inPass) return { name: sat.name, start: startT, end: t, maxEl: maxEl, rec: sat.rec };
+                if(inPass) {
+                    return { name: sat.name, start: startT, end: t, maxEl: maxEl, rec: sat.rec };
+                }
             }
         }
         return null;
@@ -334,7 +344,7 @@
         playlist.forEach(m => {
             let pts = "";
             m.path.forEach(pt => {
-                let az = pt.az; 
+                let az = pt.az;
                 let el = -pt.el; // PITCH REVERSED
                 pts += `(${Math.round(pt.t)},${Math.round(az*10)},${Math.round(el*10)}),`;
             });
@@ -343,7 +353,6 @@
         });
         py += "]\n";
         
-        // ADDED GEARS=[24, 8] TO AZIMUTH MOTOR
         const template = `from pybricks.hubs import InventorHub
 from pybricks.pupdevices import Motor
 from pybricks.parameters import Port, Direction, Color, Button
@@ -351,7 +360,8 @@ from pybricks.tools import wait, StopWatch
 import gc
 
 hub = InventorHub()
-az_motor = Motor(Port.B, Direction.CLOCKWISE, gears=[24, 8]) 
+# YAW REVERSED (CounterClockwise)
+az_motor = Motor(Port.B, Direction.COUNTERCLOCKWISE, gears=[24, 8]) 
 el_motor = Motor(Port.F, Direction.COUNTERCLOCKWISE)
 
 az_motor.reset_angle(0)
@@ -418,6 +428,7 @@ for i, m in enumerate(playlist):
             el_motor.track_target(tar_el)
         wait(25) 
 
+    # RESET TO NORTH (0,0) AFTER EVERY RUN
     print("Pass Done. Resetting.")
     hub.light.on(Color.BLUE)
     az_motor.run_target(500, 0, wait=False)
@@ -436,6 +447,7 @@ print("DONE")`;
 </script>
 </body>
 </html>
+
 
 
 
