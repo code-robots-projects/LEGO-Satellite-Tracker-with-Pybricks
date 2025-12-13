@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LEGO Mission Control: Ticker Tape</title>
+    <title>LEGO Mission Control: >20° Only</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/4.1.3/satellite.min.js"></script>
     <style>
         :root { --bg: #0f172a; --panel: #1e293b; --text: #e2e8f0; --blue: #3b82f6; --green: #22c55e; --orange: #f59e0b; }
@@ -58,7 +58,7 @@
             <input type="number" id="lon" placeholder="Longitude" step="0.0001">
             <button class="btn-green" style="flex:0 0 100px" onclick="detectLoc()">📍 Detect</button>
             <input type="time" id="startTime">
-            <button class="btn-blue" style="flex:2" onclick="generatePlaylist()">🚀 Build Ticker Schedule</button>
+            <button class="btn-blue" style="flex:2" onclick="generatePlaylist()">🚀 Build Schedule (>20°)</button>
         </div>
         <div id="status" style="text-align: center; color: var(--orange); font-weight: bold; height: 20px;"></div>
     </div>
@@ -67,7 +67,7 @@
         
         <div class="card">
             <h3>Flight Plan</h3>
-            <p style="font-size:0.85em; color:#94a3b8;">Full Name Scroll during tracking.</p>
+            <p style="font-size:0.85em; color:#94a3b8;">Strict 20° Limit. Ticker Active. No Reset.</p>
             <div id="playlist" class="playlist"></div>
         </div>
 
@@ -91,7 +91,7 @@
             <div style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #334155;">
                 <h3>Robot Python Code</h3>
                 <p style="font-size:0.85em; color:#94a3b8;">
-                    <b>LOGIC:</b> Uses "Ticker Tape" method to display full name char-by-char while moving motors.
+                    <b>LOGIC:</b> Only moves when El >= 20°. Holds position after pass.
                 </p>
                 <textarea id="codeBox" readonly></textarea>
                 <button class="btn-copy" onclick="copyCode()">📋 Copy Code</button>
@@ -110,8 +110,8 @@
     let playlist = [];
     let timerInterval = null;
     let animationFrame = null;
+    let userStartTime = null;
     
-    // Voice State
     let lastSpokenSat = "";
     let lastSpokenTime = 0;
     let announcedAcquisition = false;
@@ -148,17 +148,18 @@
                 }
             }
 
-            status.innerText = "Building Schedule (>20°)...";
-            
             const timeParts = document.getElementById('startTime').value.split(':');
-            const startSearch = new Date();
-            startSearch.setHours(timeParts[0], timeParts[1], 0, 0);
+            const scheduleStart = new Date();
+            scheduleStart.setHours(timeParts[0], timeParts[1], 0, 0);
+            userStartTime = scheduleStart; 
+
+            status.innerText = "Searching schedule...";
             
             const obs = { latitude: satellite.degreesToRadians(lat), longitude: satellite.degreesToRadians(lon), height: 0.03 };
             let allPasses = [];
 
             for(let s of sats) {
-                let p = findHighPass(s, startSearch, 60, obs);
+                let p = findHighPass(s, scheduleStart, 60, obs);
                 if(p) allPasses.push(p);
             }
 
@@ -166,7 +167,7 @@
 
             playlist = [];
             if(allPasses.length > 0) {
-                let lastEnd = new Date(0);
+                let lastEnd = userStartTime;
                 for(let p of allPasses) {
                     if(playlist.length >= 10) break; 
                     if(p.start > new Date(lastEnd.getTime() + 45000)) {
@@ -176,9 +177,9 @@
                 }
             }
 
-            if(playlist.length === 0) { status.innerText = "No high passes (>20°) found."; return; }
+            if(playlist.length === 0) { status.innerText = "No >20° passes found after " + timeParts.join(':'); return; }
 
-            status.innerText = "Generating Paths...";
+            status.innerText = "Calculating >20° paths...";
             playlist.forEach(m => {
                 m.path = calcPath(m, obs, 12);
                 m.uiPath = calcPath(m, obs, 2);
@@ -190,7 +191,7 @@
             
             generateCode();
             startLiveDashboard();
-            speak("System initialized. Upload ticker code.");
+            speak("Schedule built. Strictly tracking above 20 degrees.");
 
         } catch(e) { status.innerText = "Error: " + e; console.error(e); }
     }
@@ -209,27 +210,31 @@
             if(el > maxEl) { maxEl = el; peakTime = t; }
         }
 
-        if(maxEl < 20) return null; 
+        // STRICT CHECK: Discard if max elevation never hits 20
+        if(maxEl < 20.0) return null; 
 
+        // Find Start (crossing 20 up)
         let startT = peakTime;
         for(let s=0; s<600; s++) { 
             const t = new Date(peakTime.getTime() - s*1000);
             const gmst = satellite.gstime(t);
             const pv = satellite.propagate(sat.rec, t);
             const look = satellite.ecfToLookAngles(obs, satellite.eciToEcf(pv.position, gmst));
-            if(satellite.radiansToDegrees(look.elevation) < 20) {
-                startT = new Date(t.getTime() + 1000); 
+            if(satellite.radiansToDegrees(look.elevation) < 20.0) {
+                startT = new Date(t.getTime() + 1000); // The second it crosses 20
                 break;
             }
         }
+
+        // Find End (crossing 20 down)
         let endT = peakTime;
         for(let s=0; s<600; s++) { 
             const t = new Date(peakTime.getTime() + s*1000);
             const gmst = satellite.gstime(t);
             const pv = satellite.propagate(sat.rec, t);
             const look = satellite.ecfToLookAngles(obs, satellite.eciToEcf(pv.position, gmst));
-            if(satellite.radiansToDegrees(look.elevation) < 20) {
-                endT = new Date(t.getTime() - 1000); 
+            if(satellite.radiansToDegrees(look.elevation) < 20.0) {
+                endT = new Date(t.getTime() - 1000); // The second before it drops below 20
                 break;
             }
         }
@@ -247,7 +252,9 @@
             const look = satellite.ecfToLookAngles(obs, satellite.eciToEcf(pv.position, gmst));
             const el = satellite.radiansToDegrees(look.elevation);
             const az = satellite.radiansToDegrees(look.azimuth);
-            if(el >= 19.5) { 
+            
+            // STRICT FILTER
+            if(el >= 20.0) { 
                 path.push({ t:s, az:az, el:el });
             }
         }
@@ -274,7 +281,7 @@
             if(domList.children.length !== activeMissions.length) {
                 renderPlaylistDOM(activeMissions);
                 if(activeMissions.length > 0 && lastSpokenSat !== "") {
-                     speak("Pass complete. Returning to standby.");
+                     speak("Pass complete. Holding position.");
                      lastSpokenSat = ""; 
                      announcedAcquisition = false;
                 }
@@ -325,197 +332,5 @@
                     lastSpokenSat = current.name;
                     lastSpokenTime = Date.now();
                 } 
-                else if (Date.now() - lastSpokenTime > 30000) { 
-                    speak(`Tracking ${current.name}.`);
-                    lastSpokenTime = Date.now();
-                }
-            }
-            
-            document.getElementById('subTimer').innerText = `Start: ${current.start.toLocaleTimeString()}`;
-            drawRadar(current.uiPath, currentPos);
-            animationFrame = requestAnimationFrame(update);
-        };
-        update();
-    }
+                else if (Date
 
-    function renderPlaylistDOM(list = playlist) {
-        const div = document.getElementById('playlist');
-        div.innerHTML = "";
-        list.forEach((m, i) => {
-            const el = document.createElement('div');
-            el.className = 'playlist-item';
-            el.innerHTML = `
-                <div class="slot-badge">${i+1}</div>
-                <div class="sat-info">
-                    <div>${m.name}</div>
-                    <div>${m.start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
-                </div>
-                <div class="sat-el">${m.maxEl.toFixed(0)}°</div>
-            `;
-            div.appendChild(el);
-        });
-    }
-
-    function drawRadar(path, currentPos) {
-        ctx.fillStyle = "#000"; ctx.fillRect(0,0,320,320);
-        const cx=160, cy=160, r=140;
-        ctx.strokeStyle = "#334155"; ctx.lineWidth=1;
-        [1, 0.66, 0.33].forEach(s => { ctx.beginPath(); ctx.arc(cx,cy,r*s,0,Math.PI*2); ctx.stroke(); });
-        ctx.beginPath(); ctx.moveTo(cx,0); ctx.lineTo(cx,320); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(0,cy); ctx.lineTo(320,cy); ctx.stroke();
-
-        const maskR = r * (1 - 20/90);
-        ctx.strokeStyle = "#ef4444"; ctx.setLineDash([5, 5]);
-        ctx.beginPath(); ctx.arc(cx, cy, maskR, 0, Math.PI*2); ctx.stroke();
-        ctx.setLineDash([]);
-
-        if(!path) return;
-
-        ctx.beginPath();
-        ctx.strokeStyle = "#22c55e"; ctx.lineWidth=2;
-        let first = true;
-        path.forEach(pt => {
-            const dist = r * (1 - (pt.el/90));
-            const rad = (pt.az - 90) * (Math.PI/180);
-            const x = cx + dist * Math.cos(rad);
-            const y = cy + dist * Math.sin(rad);
-            if(first) { ctx.moveTo(x,y); first=false; } else ctx.lineTo(x,y);
-        });
-        ctx.stroke();
-
-        if(currentPos) {
-            const d = r * (1 - (currentPos.el/90));
-            const ra = (currentPos.az - 90) * (Math.PI/180);
-            const tx = cx + d*Math.cos(ra);
-            const ty = cy + d*Math.sin(ra);
-            ctx.fillStyle = "#ef4444";
-            ctx.beginPath(); ctx.arc(tx, ty, 5, 0, Math.PI*2); ctx.fill();
-        }
-    }
-
-    function generateCode() {
-        let py = "playlist = [\n";
-        playlist.forEach(m => {
-            let pts = "";
-            m.path.forEach(pt => {
-                let az = pt.az;
-                let el = -pt.el; 
-                pts += `(${Math.round(pt.t)},${Math.round(az*10)},${Math.round(el*10)}),`;
-            });
-            const offsetSec = Math.floor((m.start - playlist[0].start) / 1000);
-            py += `    {"name":"${m.name}", "start":${offsetSec}, "path":[${pts}]},\n`;
-        });
-        py += "]\n";
-        
-        const template = `from pybricks.hubs import InventorHub
-from pybricks.pupdevices import Motor
-from pybricks.parameters import Port, Direction, Color, Button
-from pybricks.tools import wait, StopWatch
-import gc
-
-hub = InventorHub()
-# GEARS: 40T motor -> 24T shaft
-az_motor = Motor(Port.B, Direction.COUNTERCLOCKWISE, gears=[40, 24]) 
-el_motor = Motor(Port.F, Direction.COUNTERCLOCKWISE)
-
-az_motor.reset_angle(0)
-el_motor.reset_angle(0)
-
-${py}
-
-def get_pos(path, t_now):
-    for i in range(len(path) - 1):
-        p1 = path[i]
-        p2 = path[i+1]
-        t1, t2 = p1[0], p2[0]
-        if t1 <= t_now <= t2:
-            progress = (t_now - t1) / (t2 - t1)
-            az = (p1[1] + (p2[1] - p1[1]) * progress) / 10.0
-            el = (p1[2] + (p2[2] - p1[2]) * progress) / 10.0
-            return az, el
-    return None, None
-
-hub.light.on(Color.BLUE)
-print("READY. LEFT=ARM, RIGHT=LAUNCH")
-while Button.LEFT not in hub.buttons.pressed(): wait(10)
-while Button.LEFT in hub.buttons.pressed(): wait(10)
-
-hub.light.on(Color.ORANGE)
-hub.light.blink(Color.ORANGE, [200, 200])
-while Button.RIGHT not in hub.buttons.pressed(): wait(10)
-
-hub.light.on(Color.GREEN)
-master_clock = StopWatch()
-master_clock.reset()
-
-for i, m in enumerate(playlist):
-    target_start = m["start"] * 1000
-    hub.light.on(Color.YELLOW)
-    
-    # --- WAITING PHASE (T-30s) ---
-    wait_time = target_start - 30000 
-    
-    if master_clock.time() < wait_time:
-        # Full scroll while waiting
-        while master_clock.time() < wait_time:
-             hub.display.text(m["name"])
-             wait(100)
-    
-    # --- MOVE TO START POS ---
-    s = m["path"][0]
-    az_motor.run_target(500, s[1]/10, wait=False)
-    el_motor.run_target(500, s[2]/10, wait=True)
-    
-    # Final wait
-    while master_clock.time() < target_start:
-        wait(50)
-
-    # --- TRACKING PHASE ---
-    hub.light.on(Color.GREEN)
-    path = m["path"]
-    duration = path[-1][0] * 1000
-    t_offset = 0
-    
-    # Setup Ticker Display
-    display_str = m["name"] + "   "
-    last_char_idx = -1
-    
-    while t_offset < duration:
-        t_offset = master_clock.time() - target_start
-        t_sec = t_offset / 1000.0
-        
-        # 1. MOTOR CONTROL (Priority)
-        tar_az, tar_el = get_pos(path, t_sec)
-        if tar_az is not None:
-            az_motor.track_target(tar_az)
-            el_motor.track_target(tar_el)
-            
-        # 2. TICKER TAPE DISPLAY (Update every 400ms)
-        # Using math modulo to cycle letters without blocking
-        char_idx = int(t_offset / 400) % len(display_str)
-        if char_idx != last_char_idx:
-            hub.display.char(display_str[char_idx])
-            last_char_idx = char_idx
-            
-        wait(25) 
-
-    # --- RESET ---
-    print("Pass Done. Parking.")
-    hub.light.on(Color.BLUE)
-    az_motor.run_target(500, 0, wait=False)
-    el_motor.run_target(500, 0, wait=True)
-    gc.collect()
-
-hub.light.blink(Color.GREEN, [500, 500])
-print("DONE")`;
-
-        document.getElementById('codeBox').value = template;
-    }
-
-    function copyCode() {
-        document.getElementById('codeBox').select();
-        document.execCommand('copy');
-    }
-</script>
-</body>
-</html>
