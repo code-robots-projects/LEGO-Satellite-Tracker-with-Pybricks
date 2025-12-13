@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LEGO Mission Control: 40T/24T</title>
+    <title>LEGO Mission Control: Ticker Tape</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/4.1.3/satellite.min.js"></script>
     <style>
         :root { --bg: #0f172a; --panel: #1e293b; --text: #e2e8f0; --blue: #3b82f6; --green: #22c55e; --orange: #f59e0b; }
@@ -58,7 +58,7 @@
             <input type="number" id="lon" placeholder="Longitude" step="0.0001">
             <button class="btn-green" style="flex:0 0 100px" onclick="detectLoc()">📍 Detect</button>
             <input type="time" id="startTime">
-            <button class="btn-blue" style="flex:2" onclick="generatePlaylist()">🚀 Build 40T/24T Schedule</button>
+            <button class="btn-blue" style="flex:2" onclick="generatePlaylist()">🚀 Build Ticker Schedule</button>
         </div>
         <div id="status" style="text-align: center; color: var(--orange); font-weight: bold; height: 20px;"></div>
     </div>
@@ -67,7 +67,7 @@
         
         <div class="card">
             <h3>Flight Plan</h3>
-            <p style="font-size:0.85em; color:#94a3b8;">Only tracking segments > 20° elevation.</p>
+            <p style="font-size:0.85em; color:#94a3b8;">Full Name Scroll during tracking.</p>
             <div id="playlist" class="playlist"></div>
         </div>
 
@@ -91,8 +91,7 @@
             <div style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #334155;">
                 <h3>Robot Python Code</h3>
                 <p style="font-size:0.85em; color:#94a3b8;">
-                    <b>SETUP:</b> Point North (0). Arm Flat (0).<br>
-                    <b>LEFT:</b> Arm. <b>RIGHT:</b> Launch.
+                    <b>LOGIC:</b> Uses "Ticker Tape" method to display full name char-by-char while moving motors.
                 </p>
                 <textarea id="codeBox" readonly></textarea>
                 <button class="btn-copy" onclick="copyCode()">📋 Copy Code</button>
@@ -115,6 +114,7 @@
     // Voice State
     let lastSpokenSat = "";
     let lastSpokenTime = 0;
+    let announcedAcquisition = false;
 
     // --- 1. LOCATION ---
     function detectLoc() {
@@ -157,22 +157,19 @@
             const obs = { latitude: satellite.degreesToRadians(lat), longitude: satellite.degreesToRadians(lon), height: 0.03 };
             let allPasses = [];
 
-            // 1. Find passes that go above 20 degrees
             for(let s of sats) {
                 let p = findHighPass(s, startSearch, 60, obs);
                 if(p) allPasses.push(p);
             }
 
-            // 2. Sort by TIME
             allPasses.sort((a,b) => a.start - b.start);
 
-            // 3. FIFO FILTER
             playlist = [];
             if(allPasses.length > 0) {
                 let lastEnd = new Date(0);
                 for(let p of allPasses) {
                     if(playlist.length >= 10) break; 
-                    if(p.start > new Date(lastEnd.getTime() + 30000)) {
+                    if(p.start > new Date(lastEnd.getTime() + 45000)) {
                         playlist.push(p);
                         lastEnd = p.end; 
                     }
@@ -181,11 +178,10 @@
 
             if(playlist.length === 0) { status.innerText = "No high passes (>20°) found."; return; }
 
-            // 4. Calculate Paths
             status.innerText = "Generating Paths...";
             playlist.forEach(m => {
-                m.path = calcPath(m, obs, 12); // 12s sparse
-                m.uiPath = calcPath(m, obs, 2); // 2s dense
+                m.path = calcPath(m, obs, 12);
+                m.uiPath = calcPath(m, obs, 2);
                 m.end = new Date(m.start.getTime() + (m.uiPath.length * 2 * 1000));
             });
 
@@ -194,7 +190,7 @@
             
             generateCode();
             startLiveDashboard();
-            speak("High elevation schedule built.");
+            speak("System initialized. Upload ticker code.");
 
         } catch(e) { status.innerText = "Error: " + e; console.error(e); }
     }
@@ -203,7 +199,6 @@
         let maxEl = 0;
         let peakTime = null;
 
-        // 1. Coarse Scan
         for(let m=0; m<durationMins; m++) {
             const t = new Date(startTime.getTime() + m*60000);
             const gmst = satellite.gstime(t);
@@ -214,9 +209,8 @@
             if(el > maxEl) { maxEl = el; peakTime = t; }
         }
 
-        if(maxEl < 20) return null; // Mask at 20
+        if(maxEl < 20) return null; 
 
-        // 2. Find start/end at 20 deg crossing
         let startT = peakTime;
         for(let s=0; s<600; s++) { 
             const t = new Date(peakTime.getTime() - s*1000);
@@ -280,8 +274,9 @@
             if(domList.children.length !== activeMissions.length) {
                 renderPlaylistDOM(activeMissions);
                 if(activeMissions.length > 0 && lastSpokenSat !== "") {
-                     speak("Pass complete. Resetting.");
+                     speak("Pass complete. Returning to standby.");
                      lastSpokenSat = ""; 
+                     announcedAcquisition = false;
                 }
             }
 
@@ -297,7 +292,6 @@
             let currentPos = null;
 
             if(diff > 0) {
-                // COUNTDOWN
                 const h = Math.floor(diff/3600000).toString().padStart(2,'0');
                 const m = Math.floor((diff%3600000)/60000).toString().padStart(2,'0');
                 const s = Math.floor((diff%60000)/1000).toString().padStart(2,'0');
@@ -305,10 +299,15 @@
                 document.getElementById('launchMsg').style.color = "#94a3b8";
                 document.getElementById('mainTimer').innerText = `-${h}:${m}:${s}`;
                 document.getElementById('mainTimer').style.color = "#22c55e";
+                
+                if(diff < 30000 && !announcedAcquisition) {
+                    speak(`Acquiring ${current.name} in 30 seconds.`);
+                    announcedAcquisition = true;
+                }
+
                 if(current.uiPath.length > 0) currentPos = current.uiPath[0];
                 lastSpokenSat = ""; 
             } else {
-                // TRACKING
                 document.getElementById('launchMsg').innerText = `TRACKING: ${current.name}`;
                 document.getElementById('launchMsg').style.color = "#f59e0b";
                 document.getElementById('mainTimer').innerText = "ACTIVE";
@@ -326,10 +325,8 @@
                     lastSpokenSat = current.name;
                     lastSpokenTime = Date.now();
                 } 
-                else if (Date.now() - lastSpokenTime > 60000) {
-                    if(currentPos) {
-                        speak(`Tracking ${current.name}. Elevation ${Math.round(currentPos.el)}.`);
-                    }
+                else if (Date.now() - lastSpokenTime > 30000) { 
+                    speak(`Tracking ${current.name}.`);
                     lastSpokenTime = Date.now();
                 }
             }
@@ -367,7 +364,6 @@
         ctx.beginPath(); ctx.moveTo(cx,0); ctx.lineTo(cx,320); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(0,cy); ctx.lineTo(320,cy); ctx.stroke();
 
-        // MASK RING (20 Deg)
         const maskR = r * (1 - 20/90);
         ctx.strokeStyle = "#ef4444"; ctx.setLineDash([5, 5]);
         ctx.beginPath(); ctx.arc(cx, cy, maskR, 0, Math.PI*2); ctx.stroke();
@@ -418,7 +414,7 @@ from pybricks.tools import wait, StopWatch
 import gc
 
 hub = InventorHub()
-# GEARS UPDATED: Motor (40T) -> Output (24T)
+# GEARS: 40T motor -> 24T shaft
 az_motor = Motor(Port.B, Direction.COUNTERCLOCKWISE, gears=[40, 24]) 
 el_motor = Motor(Port.F, Direction.COUNTERCLOCKWISE)
 
@@ -439,19 +435,12 @@ def get_pos(path, t_now):
             return az, el
     return None, None
 
-# 1. ARM
 hub.light.on(Color.BLUE)
 print("READY. LEFT=ARM, RIGHT=LAUNCH")
 while Button.LEFT not in hub.buttons.pressed(): wait(10)
 while Button.LEFT in hub.buttons.pressed(): wait(10)
 
 hub.light.on(Color.ORANGE)
-m1 = playlist[0]
-s = m1["path"][0]
-az_motor.run_target(500, s[1]/10, wait=False)
-el_motor.run_target(500, s[2]/10, wait=True)
-
-# 2. LAUNCH
 hub.light.blink(Color.ORANGE, [200, 200])
 while Button.RIGHT not in hub.buttons.pressed(): wait(10)
 
@@ -460,36 +449,62 @@ master_clock = StopWatch()
 master_clock.reset()
 
 for i, m in enumerate(playlist):
-    hub.display.number(i+1)
     target_start = m["start"] * 1000
+    hub.light.on(Color.YELLOW)
     
-    if i > 0:
-        hub.light.on(Color.YELLOW)
-        s = m["path"][0]
-        az_motor.run_target(500, s[1]/10, wait=False)
-        el_motor.run_target(500, s[2]/10, wait=True)
-        gc.collect() 
-        while master_clock.time() < target_start: wait(100)
+    # --- WAITING PHASE (T-30s) ---
+    wait_time = target_start - 30000 
+    
+    if master_clock.time() < wait_time:
+        # Full scroll while waiting
+        while master_clock.time() < wait_time:
+             hub.display.text(m["name"])
+             wait(100)
+    
+    # --- MOVE TO START POS ---
+    s = m["path"][0]
+    az_motor.run_target(500, s[1]/10, wait=False)
+    el_motor.run_target(500, s[2]/10, wait=True)
+    
+    # Final wait
+    while master_clock.time() < target_start:
+        wait(50)
 
+    # --- TRACKING PHASE ---
     hub.light.on(Color.GREEN)
     path = m["path"]
     duration = path[-1][0] * 1000
     t_offset = 0
     
+    # Setup Ticker Display
+    display_str = m["name"] + "   "
+    last_char_idx = -1
+    
     while t_offset < duration:
         t_offset = master_clock.time() - target_start
         t_sec = t_offset / 1000.0
-        tar_az, tar_el = get_pos(path, t_sec)
         
+        # 1. MOTOR CONTROL (Priority)
+        tar_az, tar_el = get_pos(path, t_sec)
         if tar_az is not None:
             az_motor.track_target(tar_az)
             el_motor.track_target(tar_el)
+            
+        # 2. TICKER TAPE DISPLAY (Update every 400ms)
+        # Using math modulo to cycle letters without blocking
+        char_idx = int(t_offset / 400) % len(display_str)
+        if char_idx != last_char_idx:
+            hub.display.char(display_str[char_idx])
+            last_char_idx = char_idx
+            
         wait(25) 
 
-    print("Pass Done. Resetting.")
+    # --- RESET ---
+    print("Pass Done. Parking.")
     hub.light.on(Color.BLUE)
     az_motor.run_target(500, 0, wait=False)
     el_motor.run_target(500, 0, wait=True)
+    gc.collect()
 
 hub.light.blink(Color.GREEN, [500, 500])
 print("DONE")`;
@@ -504,17 +519,3 @@ print("DONE")`;
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
