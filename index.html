@@ -332,5 +332,202 @@
                     lastSpokenSat = current.name;
                     lastSpokenTime = Date.now();
                 } 
-                else if (Date
+                else if (Date.now() - lastSpokenTime > 30000) { 
+                    speak(`Tracking ${current.name}.`);
+                    lastSpokenTime = Date.now();
+                }
+            }
+            
+            document.getElementById('subTimer').innerText = `Start (>20°): ${current.start.toLocaleTimeString()}`;
+            drawRadar(current.uiPath, currentPos);
+            animationFrame = requestAnimationFrame(update);
+        };
+        update();
+    }
+
+    function renderPlaylistDOM(list = playlist) {
+        const div = document.getElementById('playlist');
+        div.innerHTML = "";
+        list.forEach((m, i) => {
+            const el = document.createElement('div');
+            el.className = 'playlist-item';
+            el.innerHTML = `
+                <div class="slot-badge">${i+1}</div>
+                <div class="sat-info">
+                    <div>${m.name}</div>
+                    <div>${m.start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+                </div>
+                <div class="sat-el">${m.maxEl.toFixed(0)}°</div>
+            `;
+            div.appendChild(el);
+        });
+    }
+
+    function drawRadar(path, currentPos) {
+        ctx.fillStyle = "#000"; ctx.fillRect(0,0,320,320);
+        const cx=160, cy=160, r=140;
+        ctx.strokeStyle = "#334155"; ctx.lineWidth=1;
+        // Rings for 90, 60, 30 degrees. 20 degrees is the red boundary
+        [1, 0.66, 0.33].forEach(s => { ctx.beginPath(); ctx.arc(cx,cy,r*s,0,Math.PI*2); ctx.stroke(); });
+        ctx.beginPath(); ctx.moveTo(cx,0); ctx.lineTo(cx,320); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,cy); ctx.lineTo(320,cy); ctx.stroke();
+
+        // 20 DEGREE MASK (Red Dashed Line)
+        const maskR = r * (1 - 20/90);
+        ctx.strokeStyle = "#ef4444"; ctx.lineWidth=2; ctx.setLineDash([5, 5]);
+        ctx.beginPath(); ctx.arc(cx, cy, maskR, 0, Math.PI*2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.lineWidth=1;
+
+        if(!path) return;
+
+        ctx.beginPath();
+        ctx.strokeStyle = "#22c55e"; ctx.lineWidth=2;
+        let first = true;
+        path.forEach(pt => {
+            const dist = r * (1 - (pt.el/90));
+            const rad = (pt.az - 90) * (Math.PI/180);
+            const x = cx + dist * Math.cos(rad);
+            const y = cy + dist * Math.sin(rad);
+            if(first) { ctx.moveTo(x,y); first=false; } else ctx.lineTo(x,y);
+        });
+        ctx.stroke();
+
+        if(currentPos) {
+            const d = r * (1 - (currentPos.el/90));
+            const ra = (currentPos.az - 90) * (Math.PI/180);
+            const tx = cx + d*Math.cos(ra);
+            const ty = cy + d*Math.sin(ra);
+            ctx.fillStyle = "#ef4444";
+            ctx.beginPath(); ctx.arc(tx, ty, 5, 0, Math.PI*2); ctx.fill();
+        }
+    }
+
+    function generateCode() {
+        let py = "playlist = [\n";
+        playlist.forEach(m => {
+            let pts = "";
+            m.path.forEach(pt => {
+                let az = pt.az;
+                let el = -pt.el; 
+                pts += `(${Math.round(pt.t)},${Math.round(az*10)},${Math.round(el*10)}),`;
+            });
+            const offsetSec = Math.floor((m.start - userStartTime) / 1000);
+            py += `    {"name":"${m.name}", "start":${offsetSec}, "path":[${pts}]},\n`;
+        });
+        py += "]\n";
+        
+        const template = `from pybricks.hubs import InventorHub
+from pybricks.pupdevices import Motor
+from pybricks.parameters import Port, Direction, Color, Button
+from pybricks.tools import wait, StopWatch
+import gc
+
+hub = InventorHub()
+# GEARS: 40T motor -> 24T shaft
+az_motor = Motor(Port.B, Direction.COUNTERCLOCKWISE, gears=[40, 24]) 
+el_motor = Motor(Port.F, Direction.COUNTERCLOCKWISE)
+
+az_motor.reset_angle(0)
+el_motor.reset_angle(0)
+
+${py}
+
+def get_pos(path, t_now):
+    for i in range(len(path) - 1):
+        p1 = path[i]
+        p2 = path[i+1]
+        t1, t2 = p1[0], p2[0]
+        if t1 <= t_now <= t2:
+            progress = (t_now - t1) / (t2 - t1)
+            az = (p1[1] + (p2[1] - p1[1]) * progress) / 10.0
+            el = (p1[2] + (p2[2] - p1[2]) * progress) / 10.0
+            return az, el
+    return None, None
+
+hub.light.on(Color.BLUE)
+print("READY. LEFT=ARM, RIGHT=LAUNCH")
+while Button.LEFT not in hub.buttons.pressed(): wait(10)
+while Button.LEFT in hub.buttons.pressed(): wait(10)
+
+hub.light.on(Color.ORANGE)
+hub.light.blink(Color.ORANGE, [200, 200])
+# Press RIGHT exactly at your set Start Time
+while Button.RIGHT not in hub.buttons.pressed(): wait(10)
+
+hub.light.on(Color.GREEN)
+master_clock = StopWatch()
+master_clock.reset()
+
+for i, m in enumerate(playlist):
+    target_start = m["start"] * 1000
+    hub.light.on(Color.YELLOW)
+    
+    # --- WAITING PHASE (Wait until T-30s) ---
+    wait_time = target_start - 30000 
+    
+    if master_clock.time() < wait_time:
+        # Full scroll while waiting
+        while master_clock.time() < wait_time:
+             hub.display.text(m["name"])
+             wait(100)
+    
+    # --- MOVE TO START POS ---
+    # Moves directly to the >20 degree starting point
+    s = m["path"][0]
+    az_motor.run_target(500, s[1]/10, wait=False)
+    el_motor.run_target(500, s[2]/10, wait=True)
+    
+    # Final wait for exact T-0
+    while master_clock.time() < target_start:
+        wait(50)
+
+    # --- TRACKING PHASE ---
+    hub.light.on(Color.GREEN)
+    path = m["path"]
+    duration = path[-1][0] * 1000
+    t_offset = 0
+    
+    # Ticker Tape Variables
+    display_str = m["name"] + "   "
+    last_char_idx = -1
+    
+    while t_offset < duration:
+        t_offset = master_clock.time() - target_start
+        t_sec = t_offset / 1000.0
+        
+        # 1. MOTOR CONTROL (Priority)
+        tar_az, tar_el = get_pos(path, t_sec)
+        if tar_az is not None:
+            az_motor.track_target(tar_az)
+            el_motor.track_target(tar_el)
+            
+        # 2. TICKER DISPLAY (Low Priority, 400ms update)
+        char_idx = int(t_offset / 400) % len(display_str)
+        if char_idx != last_char_idx:
+            hub.display.char(display_str[char_idx])
+            last_char_idx = char_idx
+            
+        wait(25) 
+
+    # --- FINISH (No Reset) ---
+    print("Pass Done. Holding >20 pos.")
+    hub.light.on(Color.BLUE)
+    # Motors stay at last >20 position
+    gc.collect()
+
+hub.light.blink(Color.GREEN, [500, 500])
+print("DONE")`;
+
+        document.getElementById('codeBox').value = template;
+    }
+
+    function copyCode() {
+        document.getElementById('codeBox').select();
+        document.execCommand('copy');
+    }
+</script>
+</body>
+</html>
+
 
