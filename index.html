@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LEGO Mission Control: 20° Mask</title>
+    <title>LEGO Mission Control: 40T/24T</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/4.1.3/satellite.min.js"></script>
     <style>
         :root { --bg: #0f172a; --panel: #1e293b; --text: #e2e8f0; --blue: #3b82f6; --green: #22c55e; --orange: #f59e0b; }
@@ -58,7 +58,7 @@
             <input type="number" id="lon" placeholder="Longitude" step="0.0001">
             <button class="btn-green" style="flex:0 0 100px" onclick="detectLoc()">📍 Detect</button>
             <input type="time" id="startTime">
-            <button class="btn-blue" style="flex:2" onclick="generatePlaylist()">🚀 Build 20°+ Schedule</button>
+            <button class="btn-blue" style="flex:2" onclick="generatePlaylist()">🚀 Build 40T/24T Schedule</button>
         </div>
         <div id="status" style="text-align: center; color: var(--orange); font-weight: bold; height: 20px;"></div>
     </div>
@@ -159,7 +159,6 @@
 
             // 1. Find passes that go above 20 degrees
             for(let s of sats) {
-                // Look for peak elevation
                 let p = findHighPass(s, startSearch, 60, obs);
                 if(p) allPasses.push(p);
             }
@@ -167,14 +166,12 @@
             // 2. Sort by TIME
             allPasses.sort((a,b) => a.start - b.start);
 
-            // 3. FIFO FILTER: First Available + 30s Gap
+            // 3. FIFO FILTER
             playlist = [];
             if(allPasses.length > 0) {
                 let lastEnd = new Date(0);
-                
                 for(let p of allPasses) {
-                    if(playlist.length >= 10) break; // Max 10
-                    
+                    if(playlist.length >= 10) break; 
                     if(p.start > new Date(lastEnd.getTime() + 30000)) {
                         playlist.push(p);
                         lastEnd = p.end; 
@@ -184,12 +181,11 @@
 
             if(playlist.length === 0) { status.innerText = "No high passes (>20°) found."; return; }
 
-            // 4. Calculate Paths (Restricted to 20+ deg window)
+            // 4. Calculate Paths
             status.innerText = "Generating Paths...";
             playlist.forEach(m => {
                 m.path = calcPath(m, obs, 12); // 12s sparse
                 m.uiPath = calcPath(m, obs, 2); // 2s dense
-                // Force end time to match path duration
                 m.end = new Date(m.start.getTime() + (m.uiPath.length * 2 * 1000));
             });
 
@@ -198,18 +194,16 @@
             
             generateCode();
             startLiveDashboard();
-            
             speak("High elevation schedule built.");
 
         } catch(e) { status.innerText = "Error: " + e; console.error(e); }
     }
 
-    // Logic: Find start/end times precisely at 20 degrees
     function findHighPass(sat, startTime, durationMins, obs) {
         let maxEl = 0;
         let peakTime = null;
 
-        // 1. Coarse Scan (Find the peak)
+        // 1. Coarse Scan
         for(let m=0; m<durationMins; m++) {
             const t = new Date(startTime.getTime() + m*60000);
             const gmst = satellite.gstime(t);
@@ -217,47 +211,40 @@
             if(!pv.position) continue;
             const look = satellite.ecfToLookAngles(obs, satellite.eciToEcf(pv.position, gmst));
             const el = satellite.radiansToDegrees(look.elevation);
-            
             if(el > maxEl) { maxEl = el; peakTime = t; }
         }
 
-        if(maxEl < 20) return null; // Reject low passes
+        if(maxEl < 20) return null; // Mask at 20
 
-        // 2. Fine Scan (Find 20 deg crossing points from peak)
-        // Scan backwards from peak for Start
+        // 2. Find start/end at 20 deg crossing
         let startT = peakTime;
-        for(let s=0; s<600; s++) { // Go back 10 mins max
+        for(let s=0; s<600; s++) { 
             const t = new Date(peakTime.getTime() - s*1000);
             const gmst = satellite.gstime(t);
             const pv = satellite.propagate(sat.rec, t);
             const look = satellite.ecfToLookAngles(obs, satellite.eciToEcf(pv.position, gmst));
             if(satellite.radiansToDegrees(look.elevation) < 20) {
-                startT = new Date(t.getTime() + 1000); // 1 sec after it rose above 20
+                startT = new Date(t.getTime() + 1000); 
                 break;
             }
         }
-
-        // Scan forwards from peak for End
         let endT = peakTime;
-        for(let s=0; s<600; s++) { // Go fwd 10 mins max
+        for(let s=0; s<600; s++) { 
             const t = new Date(peakTime.getTime() + s*1000);
             const gmst = satellite.gstime(t);
             const pv = satellite.propagate(sat.rec, t);
             const look = satellite.ecfToLookAngles(obs, satellite.eciToEcf(pv.position, gmst));
             if(satellite.radiansToDegrees(look.elevation) < 20) {
-                endT = new Date(t.getTime() - 1000); // 1 sec before it drops below 20
+                endT = new Date(t.getTime() - 1000); 
                 break;
             }
         }
-
         return { name: sat.name, start: startT, end: endT, maxEl: maxEl, rec: sat.rec };
     }
 
     function calcPath(m, obs, stepSec) {
         const path = [];
-        // Calculate duration based on the discovered start/end times
         const durationSec = (m.end - m.start) / 1000;
-        
         for(let s=0; s <= durationSec; s+=stepSec) { 
             const t = new Date(m.start.getTime() + s*1000);
             const gmst = satellite.gstime(t);
@@ -266,8 +253,6 @@
             const look = satellite.ecfToLookAngles(obs, satellite.eciToEcf(pv.position, gmst));
             const el = satellite.radiansToDegrees(look.elevation);
             const az = satellite.radiansToDegrees(look.azimuth);
-            
-            // Redundant check, but ensures data purity
             if(el >= 19.5) { 
                 path.push({ t:s, az:az, el:el });
             }
@@ -321,7 +306,6 @@
                 document.getElementById('mainTimer').innerText = `-${h}:${m}:${s}`;
                 document.getElementById('mainTimer').style.color = "#22c55e";
                 if(current.uiPath.length > 0) currentPos = current.uiPath[0];
-                
                 lastSpokenSat = ""; 
             } else {
                 // TRACKING
@@ -331,7 +315,6 @@
                 document.getElementById('mainTimer').style.color = "#f59e0b";
                 
                 const elapsedSec = Math.abs(diff) / 1000;
-                // UI Path is 2s step
                 const idx = Math.floor(elapsedSec / 2);
                 if(idx < current.uiPath.length) currentPos = current.uiPath[idx];
                 
@@ -385,8 +368,6 @@
         ctx.beginPath(); ctx.moveTo(0,cy); ctx.lineTo(320,cy); ctx.stroke();
 
         // MASK RING (20 Deg)
-        // 90 deg = center (0 dist), 0 deg = edge (r dist).
-        // 20 deg = (1 - 20/90) * r
         const maskR = r * (1 - 20/90);
         ctx.strokeStyle = "#ef4444"; ctx.setLineDash([5, 5]);
         ctx.beginPath(); ctx.arc(cx, cy, maskR, 0, Math.PI*2); ctx.stroke();
@@ -422,7 +403,7 @@
             let pts = "";
             m.path.forEach(pt => {
                 let az = pt.az;
-                let el = -pt.el; // PITCH REVERSED
+                let el = -pt.el; 
                 pts += `(${Math.round(pt.t)},${Math.round(az*10)},${Math.round(el*10)}),`;
             });
             const offsetSec = Math.floor((m.start - playlist[0].start) / 1000);
@@ -437,8 +418,8 @@ from pybricks.tools import wait, StopWatch
 import gc
 
 hub = InventorHub()
-# YAW REVERSED + GEARS (24:8)
-az_motor = Motor(Port.B, Direction.COUNTERCLOCKWISE, gears=[24, 8]) 
+# GEARS UPDATED: Motor (40T) -> Output (24T)
+az_motor = Motor(Port.B, Direction.COUNTERCLOCKWISE, gears=[40, 24]) 
 el_motor = Motor(Port.F, Direction.COUNTERCLOCKWISE)
 
 az_motor.reset_angle(0)
@@ -505,7 +486,6 @@ for i, m in enumerate(playlist):
             el_motor.track_target(tar_el)
         wait(25) 
 
-    # RESET TO NORTH (0,0) AFTER EVERY RUN
     print("Pass Done. Resetting.")
     hub.light.on(Color.BLUE)
     az_motor.run_target(500, 0, wait=False)
